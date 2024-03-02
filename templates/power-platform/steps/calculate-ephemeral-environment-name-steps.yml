@@ -1,0 +1,68 @@
+parameters:
+  - name: displayNamePrefix
+    displayName: Display name prefix
+    type: string
+  - name: domainNamePrefix
+    displayName: Domain name prefix
+    type: string
+  - name: displayNameMetadata
+    displayName: Display name metadata
+    type: object
+    default: []
+
+steps:
+  - powershell: |
+      Write-Host "Calculating display and domain names."
+      Write-Host "Display name prefix: $env:CALCULATEENVIRONMENTNAME_DISPLAYNAME_PREFIX."
+      Write-Host "Domain name prefix: $env:CALCULATEENVIRONMENTNAME_DOMAINNAME_PREFIX."
+
+      Write-Host "Calculating domain name suffix using build ID and job attempt."
+      $domainNameSuffix = "-$env:BUILD_BUILDID-$env:SYSTEM_JOBATTEMPT"
+      Write-Host "Domain name suffix: $domainNameSuffix."
+
+      $domainName = $env:CALCULATEENVIRONMENTNAME_DOMAINNAME_PREFIX + $domainNameSuffix
+      $displayName = "$env:CALCULATEENVIRONMENTNAME_DISPLAYNAME_PREFIX"
+
+      $environmentVariables = [System.Environment]::GetEnvironmentVariables() 
+      $metadataKeys = $environmentVariables.Keys | Where-Object { $_.StartsWith('CALCULATEENVIRONMENTNAME_DISPLAYNAME_METADATA_') }
+
+      if ($metadataKeys.Length -gt 0) {
+        Write-Host "Calculating display name based on additional metadata provided."
+        $metadata = $metadataKeys | ForEach-Object {
+          Write-Host "Retrieving metadata value for $_."
+          $value = "[$($environmentVariables[$_])]"
+          
+          Write-Host "$($_): $value."
+          return $value
+        }
+
+        if ($metadata) {
+          $metadataSuffix = $([string]::Join(" ", $metadata))  
+          Write-Host "Metadata suffix: $metadataSuffix."  
+
+          $displayName += " $metadataSuffix"
+        }
+        else {
+          Write-Host "No metadata suffix."
+        }
+      }
+
+      if ($displayName.Length -gt 100) {
+        throw "The calculated display name ($displayName) is greater than 100 characters. Please reduce the length of the display name prefix and/or metadata."
+      }
+
+      if ($domainName.Length -gt 32) {
+        throw "The calculated domain name ($domainName) is greater than 32 characters. Please reduce the length of the domain name prefix. The prefix should generally contain no more than 22 characters."
+      }
+
+      Write-Host "Calculated domain name: $domainName."
+      Write-Host "Calculated display name: $displayName"
+      Write-Host "##vso[task.setvariable variable=CalculateEnvironmentName.DomainName]$domainName"
+      Write-Host "##vso[task.setvariable variable=CalculateEnvironmentName.DisplayName]$displayName"
+    displayName: Calculate environment name
+    env:
+      CALCULATEENVIRONMENTNAME_DISPLAYNAME_PREFIX: ${{ parameters.displayNamePrefix }}
+      CALCULATEENVIRONMENTNAME_DOMAINNAME_PREFIX: ${{ parameters.domainNamePrefix }}
+      ${{ if parameters.displayNameMetadata }}:
+        ${{ each metadata in parameters.displayNameMetadata }}:
+          CALCULATEENVIRONMENTNAME_DISPLAYNAME_METADATA_${{ upper(metadata.Key) }}: ${{ metadata.Value }}

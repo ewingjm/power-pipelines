@@ -1,0 +1,39 @@
+parameters:
+  - name: url
+    displayName: URL
+    type: string
+  - name: solution
+    displayName: Solution
+    type: string
+  - name: outputDirectory
+    displayName: Output directory
+    type: string
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: commitMessage
+    displayName: Commit message
+    type: string
+  - name: branch
+    displayName: Branch
+    type: string
+  - name: postUnpackSteps
+    displayName: Post-unpack steps
+    type: stepList
+    default: []
+  - name: mapFile
+    displayName: Map File
+    type: string
+    default: ''
+
+stages:
+  - template: ../stages/sync-solution-metadata-stage.yml
+    parameters:
+      url: ${{ parameters.url }}
+      solution: ${{ parameters.solution }}
+      outputDirectory: ${{ parameters.outputDirectory }}
+      serviceConnection: ${{ parameters.serviceConnection }}
+      commitMessage: ${{ parameters.commitMessage }}
+      branch: ${{ parameters.branch }}
+      postUnpackSteps: ${{ parameters.postUnpackSteps }}
+      mapFile: ${{ parameters.mapFile }}

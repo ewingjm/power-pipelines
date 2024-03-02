@@ -1,0 +1,83 @@
+parameters:
+  - name: displayNamePrefix
+    displayName: Display name prefix
+    type: string
+  - name: displayNameMetadata
+    displayName: Display name metadata
+    type: object
+    default: []
+  - name: domainNamePrefix
+    displayName: Domain name prefix
+    type: string
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: securityGroupId
+    displayName: Security group ID
+    type: string
+    default: ''
+  - name: templates
+    displayName: Templates
+    type: string
+    default: ''
+  - name: location
+    displayName: Location
+    type: string
+    default: europe
+  - name: language
+    displayName: Language
+    type: string
+    default: English
+  - name: currency
+    displayName: Currency
+    type: string
+    default: GBP
+  - name: sku
+    displayName: SKU
+    type: string
+    default: Sandbox
+  - name: stageName
+    displayName: Stage name
+    type: string
+    default: CreateEnvironment
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+  - name: postCreateJobs
+    displayName: Optional post-create jobs
+    type: jobList
+    default: []
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: Create environment
+    ${{ if gt(length(parameters.dependsOn), 0) }}:      
+      dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    jobs:
+      # TODO: implement environment reuse
+      - template: ../jobs/create-environment-job.yml
+        parameters:
+          serviceConnection: ${{ parameters.serviceConnection }}
+          displayNamePrefix: ${{ parameters.displayNamePrefix }}
+          domainNamePrefix: ${{ parameters.domainNamePrefix }}
+          displayNameMetadata: ${{ parameters.displayNameMetadata }}
+          templates: ${{ parameters.templates }}
+          location: ${{ parameters.location }}
+          language: ${{ parameters.language }}
+          currency: ${{ parameters.currency }}  
+          sku: ${{ parameters.sku }}
+          securityGroupId: ${{ parameters.securityGroupId }}
+      - ${{ each job in parameters.postCreateJobs }}:
+        - ${{ each pair in job }}:          
+            ${{ if ne(pair.key, 'dependsOn') }}:
+              ${{ pair.key }}: ${{ pair.value }}
+          dependsOn:                        
+            - CreateEnvironment
+            - ${{ if job.dependsOn }}:
+              - ${{ job.dependsOn }}

@@ -1,0 +1,54 @@
+parameters:
+  - name: serviceConnection
+    type: string
+    displayName: The service connection
+  - name: artifact
+    type: string
+    displayName: The artifact containing the solutions
+  - name: filesToAnalyse
+    type: string
+    displayName: Files to analyse
+  - name: pipelineResource
+    type: string
+    displayName: The resource containing the artifact (if applicable)
+    default: ''
+  - name: jobName
+    displayName: Job name
+    type: string
+    default: SolutionChecker
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+  - name: continueOnError
+    type: boolean
+    displayName: Continue on error
+    default: false
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: Check solution(s)
+    dependsOn: ${{ parameters.dependsOn }}
+    variables:
+      ${{ if parameters.pipelineResource }}:
+        CheckSolutions.ArtifactRoot: $(Pipeline.Workspace)/${{ parameters.pipelineResource }}
+      ${{ if not(parameters.pipelineResource) }}:
+        CheckSolutions.ArtifactRoot: $(Pipeline.Workspace)
+    steps:
+      - checkout: none
+      - download: ${{ coalesce(parameters.pipelineResource, 'current') }}
+        artifact: ${{ parameters.artifact }}
+        displayName: Download artifact
+      - task: PowerPlatformToolInstaller@2
+        displayName: Install Power Platform Build Tools
+        inputs:
+          DefaultVersion: true
+      - task: PowerPlatformChecker@2
+        displayName: Run Solution Checker
+        continueOnError: ${{ parameters.continueOnError }}
+        inputs:
+          authenticationType: PowerPlatformSPN
+          PowerPlatformSPN: ${{ parameters.serviceConnection }}
+          RuleSet: 0ad12346-e108-40b8-a956-9a8f95ea18c9
+          FilesToAnalyze: $(CheckSolutions.ArtifactRoot)/${{ parameters.filesToAnalyse }}
+        enabled: false

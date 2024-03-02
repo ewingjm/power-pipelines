@@ -1,0 +1,52 @@
+<Project>
+    <UsingTask
+        TaskName="PackMissingDependencies"
+        TaskFactory="RoslynCodeTaskFactory"
+        AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+        <ParameterGroup>
+            <SolutionXml Required="true" />
+        </ParameterGroup>
+        <Task>
+            <Using Namespace="System" />
+            <Using Namespace="System.IO" />
+            <Using Namespace="System.Xml" />
+            <Code Type="Fragment" Language="cs">
+                <![CDATA[
+                Log.LogMessage(MessageImportance.High, $"Packing missing dependency files into {SolutionXml}.");
+            
+                var solution = new XmlDocument();
+                solution.Load(SolutionXml);
+
+                var sourceDirectory = Path.Combine(Path.GetDirectoryName(SolutionXml), "MissingDependencies");
+                Log.LogMessage(MessageImportance.High, $"Using {sourceDirectory} folder.");
+
+                var missingDependencyFiles = Directory.GetFiles(sourceDirectory);
+                Log.LogMessage(MessageImportance.High, $"Found {missingDependencyFiles.Length} missing dependency files to pack.");
+
+                Log.LogMessage(MessageImportance.High, "Removing any existing nodes from Solution.xml.");
+                var missingDependenciesNode = solution.DocumentElement.SelectSingleNode("//MissingDependencies");
+                missingDependenciesNode.RemoveAll();
+
+                foreach (var file in missingDependencyFiles)
+                {
+                    var content = File.ReadAllText(file);
+                    var missingDependencyXml = new XmlDocument();
+                    missingDependencyXml.LoadXml(content);
+                    
+                    missingDependenciesNode.AppendChild(
+                        solution.ImportNode(missingDependencyXml.DocumentElement, true));
+                }
+
+                Log.LogMessage(MessageImportance.High, "Saving Solution.xml.");
+                solution.Save(SolutionXml);
+                ]]>
+            </Code>
+        </Task>
+    </UsingTask>
+    <Target Name="PackMissingDependencies"
+        Condition="Exists('$(MSBuildProjectDirectory)\$(SolutionRootPath)\Other\MissingDependencies')"
+        AfterTargets="CopyCdsSolutionContent" BeforeTargets="PowerAppsPackage">
+        <PackMissingDependencies
+            SolutionXml="$(SolutionPackagerMetadataWorkingDirectory)\Other\Solution.xml" />
+    </Target>
+</Project>

@@ -1,0 +1,58 @@
+parameters:
+  - name: sourceLocaleId
+    displayName: Source locale ID
+    type: string
+  - name: targetLocaleId
+    displayName: Target locale ID
+    type: string
+  - name: url
+    displayName: URL
+    type: string
+  - name: applicationId
+    displayName: Application ID
+    type: string
+  - name: clientSecret
+    displayName: Client secret
+    type: string
+
+steps:
+  - powershell: |
+      if (!(Get-Module -ListAvailable -Name Microsoft.Xrm.Tooling.CrmConnector.PowerShell)) { 
+        Install-Module -Name Microsoft.Xrm.Tooling.CrmConnector.PowerShell -Force -Scope CurrentUser 
+      }
+
+      Write-Host "Mapping user locale settings from $env:SETUSERLOCALES_SOURCELOCALEID to $env:SETUSERLOCALES_TARGETLOCALEID"
+      $conn = Get-CrmConnection -ConnectionString "Url=$env:SETUSERLOCALES_URL; ClientId=$env:SETUSERLOCALES_APPLICATIONID; ClientSecret=$env:SETUSERLOCALES_CLIENTSECRET; AuthType=ClientSecret"
+
+      $query = [Microsoft.Xrm.Sdk.Query.QueryByAttribute]::new('usersettings')
+      $query.AddAttributeValue('localeid', $env:SETUSERLOCALES_SOURCELOCALEID)
+      $query.ColumnSet = [Microsoft.Xrm.Sdk.Query.ColumnSet]::new('localeid')
+
+      $executeMultipleSettings = [Microsoft.Xrm.Sdk.ExecuteMultipleSettings]::new()
+      $executeMultipleSettings.ContinueOnError = $true
+      $executeMultipleSettings.ReturnResponses = $false
+
+      $executeMultipleRequests = [Microsoft.Xrm.Sdk.OrganizationRequestCollection]::new()
+
+      $usersettings = $conn.RetrieveMultiple($query).Entities
+
+      $usersettings | ForEach-Object {
+          $_.Attributes['localeid'] = $env:SETUSERLOCALES_TARGETLOCALEID
+          
+          $updateRequest = [Microsoft.Xrm.Sdk.Messages.UpdateRequest]::new()
+          $updateRequest.Target = $_
+          $executeMultipleRequests.Add($updateRequest)
+      }
+
+      $executeMultipleRequest = [Microsoft.Xrm.Sdk.Messages.ExecuteMultipleRequest]::new()
+      $executeMultipleRequest.Settings = $executeMultipleSettings
+      $executeMultipleRequest.Requests = $executeMultipleRequests
+
+      $conn.Execute($executeMultipleRequest)
+    displayName: Map user locales from ${{ parameters.sourceLocaleId }} to ${{ parameters.targetLocaleId }}
+    env:
+      SETUSERLOCALES_SOURCELOCALEID: ${{ parameters.sourceLocaleId }}
+      SETUSERLOCALES_TARGETLOCALEID: ${{ parameters.targetLocaleId }}
+      SETUSERLOCALES_URL: ${{ parameters.url }}
+      SETUSERLOCALES_APPLICATIONID: ${{ parameters.applicationId }}
+      SETUSERLOCALES_CLIENTSECRET: ${{ parameters.clientSecret }}

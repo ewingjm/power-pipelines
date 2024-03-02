@@ -1,0 +1,49 @@
+parameters:
+  - name: solutionSourcePattern
+    displayName: Solution source pattern
+    type: string
+  - name: webResourceSourcePatterns
+    displayName: Web resource source patterns
+    type: object
+    default: []
+  - name: assemblySourcePatterns
+    displayName: Assembly source patterns
+    type: object
+    default: []
+  - name: additionalPatterns
+    displayName: Additional patterns  
+    type: object
+    default: []
+  - name: repository
+    displayName: Repository
+    type: string
+    default: $(Build.SourcesDirectory)
+  - name: jobName
+    displayName: Job name
+    type: string
+    default: AnalyseUpdates
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: Analyse updates
+    dependsOn: ${{ parameters.dependsOn }}
+    steps:
+      - checkout: self
+        fetchDepth: 0
+      - template: ../steps/analyse-git-solution-updates-steps.yml
+        parameters:
+          solutionSourcePattern: ${{ parameters.solutionSourcePattern }}
+          webResourceSourcePatterns: ${{ parameters.webResourceSourcePatterns }}
+          assemblySourcePatterns: ${{ parameters.assemblySourcePatterns }}
+          repository: ${{ parameters.repository }}
+      - ${{ each pattern in parameters.additionalPatterns }}:
+        - template: ../steps/analyse-git-updates-steps.yml
+          parameters:
+            filePatterns: ${{ pattern.filePatterns }}
+            stepName: ${{ pattern.stepName }}
+            stepDisplayName: ${{ pattern.stepDisplayName }}
+            repository: ${{ parameters.repository }}

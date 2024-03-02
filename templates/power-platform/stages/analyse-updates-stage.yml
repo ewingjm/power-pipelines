@@ -1,0 +1,48 @@
+parameters:
+  - name: solutionSourcePattern
+    displayName: Solution source pattern
+    type: string
+  - name: webResourceSourcePatterns
+    displayName: Web resource source patterns
+    type: object
+    default: []
+  - name: assemblySourcePatterns
+    displayName: Assembly source patterns
+    type: object
+    default: []
+  - name: additionalPatterns
+    displayName: Additional patterns  
+    type: object
+    default: []
+  - name: repository
+    displayName: Repository
+    type: string
+    default: $(Build.SourcesDirectory)
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+  - name: stageName
+    displayName: stageName
+    type: string
+    default: AnalyseUpdates
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: Analyse updates
+    ${{ if gt(length(parameters.dependsOn), 0) }}:      
+      dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    jobs:
+      - template: ../jobs/analyse-updates-job.yml
+        parameters:
+          solutionSourcePattern: ${{ parameters.solutionSourcePattern }}
+          webResourceSourcePatterns: ${{ parameters.webResourceSourcePatterns }}
+          assemblySourcePatterns: ${{ parameters.assemblySourcePatterns }}
+          additionalPatterns: ${{ parameters.additionalPatterns }}
+          repository: ${{ parameters.repository }}
+          

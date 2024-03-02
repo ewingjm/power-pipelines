@@ -1,0 +1,42 @@
+name: $(GITVERSION_FullSemVer)
+
+parameters:
+  - name: solution
+    displayName: Solution
+    type: string
+    values:
+      - con_Sales_Core
+      - con_Sales_Quotations
+  - name: workItemId
+    displayName: Work item ID
+    type: string
+  - name: branch
+    displayName: Branch (provide to create a branch)
+    type: string
+    default: ''
+
+pool:
+  vmImage: windows-latest
+
+trigger: none
+
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: power-platform-templates
+      ref: refs/heads/master 
+
+extends:
+  template: platforms/power-platform/dataverse/pipelines/create-development-environment-pipeline.yml@templates
+  parameters:
+    solution: ${{ parameters.solution }}
+    workItemId: ${{ parameters.workItemId }}
+    packageProject: deploy/Contoso.Sales.Deployment/Contoso.Sales.Deployment.csproj 
+    displayNamePrefix: CONTOSO-SALES-DEV
+    domainNamePrefix: contoso-sales-dev
+    serviceConnection: Sales Management App
+    templates: D365_Sales
+    securityGroupId: 425bf098-07a0-46b4-a06a-706b302dbe7b
+    config: PkgAssets/ImportConfig.Ephemeral.xml
+    branch: ${{ parameters.branch }}

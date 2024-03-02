@@ -1,0 +1,32 @@
+
+pool:
+  vmImage: windows-latest
+
+trigger: none
+
+schedules:
+  - cron: '0 0 * * *'
+    displayName: Daily midnight run
+    branches:
+      include:
+        - master
+    always: true
+
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: trade.templates
+      ref: refs/heads/master
+
+extends:
+  template: platforms/power-platform/dataverse/pipelines/delete-work-item-environments-pipeline.yml@templates
+  parameters:
+    serviceConnection: Sales Management App
+    categorystates:
+      - Removed
+      - Completed
+    metadata:
+      environment: development
+      repoId: contoso-sales
+    createdby: 1c0e6ba5-cf1d-4cb9-90a2-984ccf5b9a6d

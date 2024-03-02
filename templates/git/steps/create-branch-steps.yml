@@ -1,0 +1,27 @@
+parameters:
+  - name: branch
+    displayName: Branch
+    type: string
+  - name: stepName
+    displayName: Step name
+    type: string
+    default: ''
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Create branch
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+steps:
+  - powershell: |
+      Write-Host "Creating branch $env:CREATEBRANCH_BRANCH."
+      git branch $env:CREATEBRANCH_BRANCH
+    displayName: ${{ parameters.stepDisplayName }}
+    ${{ if parameters.stepName }}:
+      name: ${{ parameters.stepName }}
+    condition: ${{ parameters.condition }}
+    env:
+      CREATEBRANCH_BRANCH: ${{ parameters.branch }}

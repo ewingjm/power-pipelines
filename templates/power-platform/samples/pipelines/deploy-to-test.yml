@@ -1,0 +1,54 @@
+name: $(SetAggregateRunNumber.RunNumber)
+
+pool:
+  vmImage: windows-latest
+
+schedules:
+  - cron: '0 0 * * *'
+    displayName: Daily midnight run
+    branches:
+      include:
+        - master
+    always: true
+
+trigger: none
+
+resources:
+  pipelines:
+    - pipeline: inventory
+      source: power-platform-inventory
+      branch: master
+    - pipeline: sales
+      source: power-platform-sales
+      branch: master
+    - pipeline: marketing
+      source: power-platform-marketing
+      branch: master
+
+resources:
+  repositories:
+    - repository: templates
+      type: git
+      name: power-platform-templates
+      ref: refs/heads/master 
+
+extends:
+  template: platforms/power-platform/dataverse/pipelines/deploy-packages-pipeline.yml
+  parameters:
+    serviceConnection: Contoso - Test
+    environment: Test
+    packages:
+      - resource: inventory
+        artifact: package
+        file: Contoso.Inventory.Deployment.dll
+      - resource: sales
+        artifact: package
+        file: Contoso.Sales.Deployment.dll
+        dependsOn:
+          - inventory
+      - resource: marketing
+        artifact: package
+        file: Contoso.Marketing.Deployment.dll
+        dependsOn:
+          - inventory
+    tagSuccess: true

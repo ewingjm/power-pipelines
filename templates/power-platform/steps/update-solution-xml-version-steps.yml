@@ -1,0 +1,21 @@
+parameters:
+  - name: solutionXmlFile
+    displayName: Solution.xml file
+    type: string
+  - name: version
+    displayName: Version
+    type: string
+
+steps:
+  - powershell: |
+      $file = $env:UPDATESOLUTIONXMLVERSION_SOLUTIONXMLFILE
+      $version = $env:UPDATESOLUTIONXMLVERSION_VERSION
+
+      Write-Host "Setting $file version to $version."
+      [xml]$solutionXml = Get-Content -Path $file
+      $solutionXml.ImportExportXml.SolutionManifest.Version = $version
+      $solutionXml.Save($file)
+    displayName: Update solution version
+    env:
+      UPDATESOLUTIONXMLVERSION_SOLUTIONXMLFILE: ${{ parameters.solutionXmlFile }}
+      UPDATESOLUTIONXMLVERSION_VERSION: ${{ parameters.version }}

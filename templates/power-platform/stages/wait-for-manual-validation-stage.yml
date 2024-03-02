@@ -1,0 +1,37 @@
+parameters:
+  - name: url
+    displayName: Environment URL
+    type: string
+  - name: stageName
+    displayName: Stage name
+    type: string
+    default: ManualValidation
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+  - name: condition
+    type: string
+    displayName: The stage condition
+    default: succeeded()
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: Manual validation
+    ${{ if gt(length(parameters.dependsOn), 0) }}:      
+      dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    jobs:
+      - job: WaitForValidation
+        displayName: Wait for manual validation
+        pool: server
+        timeoutInMinutes: 8640
+        variables:
+          BuildTools.EnvironmentUrl: ${{ parameters.url }}
+        steps:
+          - task: ManualValidation@0
+            displayName: Wait for manual validation
+            timeoutInMinutes: 7200
+            inputs:
+              onTimeout: resume
+              instructions: "Please do any checks required on $(BuildTools.EnvironmentUrl)."

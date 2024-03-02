@@ -1,0 +1,208 @@
+parameters:
+  - name: workItemId
+    displayName: Work item ID
+    type: string
+  - name: displayNamePrefix
+    displayName: Display name prefix
+    type: string
+  - name: domainNamePrefix
+    displayName: Domain name prefix
+    type: string
+  - name: packageProject
+    displayName: Package project
+    type: string
+  - name: solution
+    displayName: Solution
+    type: string
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: securityGroupId
+    displayName: Security group ID
+    type: string
+    default: ''
+  - name: prepareEnvironmentJobs
+    displayName: Optional pre-deployment jobs
+    type: jobList
+    default: []
+  - name: finaliseEnvironmentJobs
+    displayName: Optional post-deployment jobs
+    type: jobList
+    default: []
+  - name: templates
+    displayName: Templates
+    type: string
+    default: ''
+  - name: location
+    displayName: Location
+    type: string
+    default: europe
+  - name: language
+    displayName: Language
+    type: string
+    default: English
+  - name: currency
+    displayName: Currency
+    type: string
+    default: GBP
+  - name: config
+    displayName: Package Deployer config file
+    type: string
+    default: ''
+  - name: branch
+    displayName: Branch
+    type: string
+    default: ''
+  - name: dotNetSdkVersion
+    displayName: .NET SDK version
+    type: string
+    default: 6.x
+
+stages:
+  - template: ../stages/build-package-stage.yml
+    parameters:
+      packageProject: ${{ parameters.packageProject }}
+      unmanagedSolution: ${{ parameters.solution }}
+      dotNetSdkVersion: ${{ parameters.dotNetSdkVersion }}
+  - template: ../stages/create-environment-stage.yml
+    parameters:
+      dependsOn:
+        - BuildPackage
+      displayNamePrefix: ${{ parameters.displayNamePrefix }}
+      displayNameMetadata:
+        workItemId: ${{ parameters.workItemId }}
+        commitHash: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetShortCommitHash.CommitHash'] ]
+      domainNamePrefix: ${{ parameters.domainNamePrefix }}
+      serviceConnection: ${{ parameters.serviceConnection }}
+      securityGroupId: ${{ parameters.securityGroupId }}
+      templates: ${{ parameters.templates }}
+      location: ${{ parameters.location }}
+      language: ${{ parameters.language }}
+      currency: ${{ parameters.currency }}
+      postCreateJobs:
+        - job: SetWorkItemHyperlink
+          displayName: Set work item hyperlink
+          variables:
+            SetWorkItemHyperlink.Url: $[ dependencies.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+            SetWorkItemHyperlink.EnvironmentId: $[ dependencies.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+            SetWorkItemHyperlink.CommitHash: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetShortCommitHash.CommitHash'] ]
+          steps:
+            - checkout: none
+            - template: ../../azure-devops/steps/serialise-to-json-steps.yml
+              parameters:
+                stepDisplayName: Get work item hyperlink metadata
+                object: 
+                  environment: development
+                  solutionName: ${{ parameters.solution }}
+                  pipeline: $(Build.DefinitionName)
+                  runId: $(Build.BuildId)
+                  repo: $(Build.Repository.Name)
+                  repoId: $(Build.Repository.ID)
+                  environmentId: $(SetWorkItemHyperlink.EnvironmentId)
+                variable: SetWorkItemHyperlink.HyperlinkMetadata
+            - template: ../../azure-devops/steps/add-work-item-hyperlink-steps.yml
+              parameters:
+                workItemId: ${{ parameters.workItemId }}
+                url: $(SetWorkItemHyperlink.Url)
+                comment: $(SetWorkItemHyperlink.HyperlinkMetadata)
+                historyComment: >
+                  <div>Created development environment.</div>
+                  <div><br></div>
+                  <div><b>URL</b>: <a href="$(SetWorkItemHyperlink.Url)">$(SetWorkItemHyperlink.Url)</a></div>
+                  <div><b>Maker URL</b>: <a href="https://make.powerapps.com/environments/$(SetWorkItemHyperlink.EnvironmentId)">https://make.powerapps.com/environments/$(SetWorkItemHyperlink.EnvironmentId)</a></div>
+        - ${{ if parameters.branch }}:
+          - job: CreateBranch
+            displayName: Create branch
+            variables:
+              CreateBranch.Branch: ${{ parameters.branch }}
+              CreateBranch.CommitHash: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetShortCommitHash.CommitHash'] ]
+            steps:
+              - checkout: self
+                clean: true
+                fetchDepth: 0
+                persistCredentials: true
+              - template: ../../git/steps/check-branch-exists-steps.yml
+                parameters:
+                  branch: $(CreateBranch.Branch)
+              - powershell: |
+                  if ([bool]::Parse($env:CHECKBRANCHEXISTS_EXISTS)) {
+                    Write-Host "##vso[task.logissue type=warning]The provided branch ($env:CREATEBRANCH_BRANCH) already exists."
+                    Write-Host "##vso[task.complete result=SucceededWithIssues;]"
+                  }
+                displayName: Warn if branch exists
+              - template: ../../git/steps/create-branch-steps.yml
+                parameters:
+                  stepDisplayName: Create $(CreateBranch.Branch)
+                  branch: $(CreateBranch.Branch)
+                  condition: and(succeeded(), eq(variables['CheckBranchExists.Exists'], 'false'))
+              - template: ../../git/steps/checkout-branch-steps.yml
+                parameters:
+                  branch: $(CreateBranch.Branch)
+                  stepDisplayName: Checkout $(CreateBranch.Branch)
+                  condition: and(succeeded(), eq(variables['CheckBranchExists.Exists'], 'false'))
+              - template: ../../git/steps/push-commits-steps.yml
+                parameters: 
+                  condition: and(succeeded(), eq(variables['CheckBranchExists.Exists'], 'false'))
+              - template: ../../azure-devops/steps/add-work-item-git-branch-steps.yml
+                parameters:
+                  workItemId: ${{ parameters.workItemId }}
+                  branch: $(CreateBranch.Branch)
+                  comment: Created by run $(Build.BuildId) of $(Build.DefinitionName)
+                  historyComment: >
+                    <div>Created branch.</div>
+                    <div><br></div>
+                    <div><b>Name</b>: $(CreateBranch.Branch)</div>
+                    <div><b>Based on commit</b>: $(CreateBranch.CommitHash)</div>
+                  condition: and(succeeded(), eq(variables['CheckBranchExists.Exists'], 'false'))
+  - ${{ if gt(length(parameters.prepareEnvironmentJobs), 0) }}:
+    - stage: PrepareEnvironment
+      displayName: Prepare environment
+      dependsOn: CreateEnvironment
+      variables:
+        BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+        BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+      jobs: ${{ parameters.prepareEnvironmentJobs }}
+  - template: ../stages/deploy-package-stage.yml
+    parameters:
+      dependsOn: 
+        - BuildPackage
+        - CreateEnvironment
+        - ${{ if gt(length(parameters.prepareEnvironmentJobs), 0) }}:
+          - PrepareEnvironment
+      environment: Ephemeral
+      serviceConnection: ${{ parameters.serviceConnection }}
+      packageArtifact: package
+      packageFile: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetPackageFile.PackageFile'] ]
+      url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+      ${{ if parameters.config }}:
+        config: ${{ parameters.config }}
+      postDeploymentJobs:
+        - job: AddWorkItemComment
+          displayName: Add work item comment
+          variables:
+            AddWorkItemComment.Url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+            AddWorkItemComment.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+            AddWorkItemComment.Solution: ${{ parameters.solution }}
+            AddWorkItemComment.CommitHash: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetShortCommitHash.CommitHash'] ]
+          steps:
+            - checkout: none
+            - template: ../../azure-devops/steps/add-work-item-comment-steps.yml
+              parameters:
+                workItemId: ${{ parameters.workItemId }}
+                comment: >
+                  <div>Deployed to development environment.</div>
+                  <div><br></div>
+                  <div><b>URL</b>: <a href="$(AddWorkItemComment.Url)">$(AddWorkItemComment.Url)</a></div>
+                  <div><b>Maker URL</b>: <a href="https://make.powerapps.com/environments/$(AddWorkItemComment.EnvironmentId)">https://make.powerapps.com/environments/$(AddWorkItemComment.EnvironmentId)</a></div>
+                  <div><b>Unmanaged solution</b>: $(AddWorkItemComment.Solution)</div>
+                  <div><b>Commit</b>: $(AddWorkItemComment.CommitHash)</div>
+  - ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
+    - stage: FinaliseEnvironment
+      displayName: Finalise environment
+      dependsOn: 
+        - CreateEnvironment
+        - DeployPackage
+      variables:
+        BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+        BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+      jobs: ${{ parameters.finaliseEnvironmentJobs }}

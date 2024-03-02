@@ -1,0 +1,26 @@
+parameters:
+  - name: config
+    displayName: Config file
+    type: string
+  - name: packageDirectory
+    displayName: Package directory
+    type: string
+
+steps:
+  - powershell: |
+      Write-Host "Locating import config to replace."
+      $config = Get-ChildItem ImportConfig.xml -Recurse -File
+
+      if (!$config) {
+        throw "Unable to locate an ImportConfig.xml within the package directory."
+      }
+
+      Write-Host "Import config located at $($config.FullName)."
+      Remove-Item $config.FullName -Force
+
+      Write-Host "Replacing with import config file at $env:USEIMPORTCONFIG_CONFIGFILE."
+      Move-Item -Path $env:USEIMPORTCONFIG_CONFIGFILE -Destination $config.FullName -Force
+    workingDirectory: ${{ parameters.packageDirectory }}
+    displayName: Use ${{ parameters.config }} configuration
+    env:
+      USEIMPORTCONFIG_CONFIGFILE: ${{ parameters.config }}

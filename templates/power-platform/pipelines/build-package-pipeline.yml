@@ -1,0 +1,67 @@
+parameters:
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: packageProject
+    displayName: Package project
+    type: string
+  - name: unitTestsProject
+    displayName: Unit tests project
+    type: string
+    default: ''
+  - name: additionalProjects
+    displayName: Additionals projects
+    type: object
+    default: []
+  - name: filesToAnalyse
+    displayName: Files to analyse (Solution Checker)
+    type: string
+    default: '**/*.zip'
+  - name: sonarCloudServiceConnection
+    displayName: SonarCloud service connection
+    type: string
+    default: ''
+  - name: sonarCloudOrganisation
+    displayName: SonarCloud organisation
+    type: string
+    default: ''
+  - name: sonarCloudProjectKey
+    displayName: SonarCloud project key
+    type: string
+    default: $(Build.Repository.Name)
+  - name: sonarCloudProjectName
+    displayName: SonarCloud project name
+    type: string
+    default: $(Build.Repository.Name)
+  - name: sonarCloudPublish
+    displayName: SonarCloud publish
+    type: boolean
+    default: true
+  - name: sonarCloudProperties
+    displayName: SonarCloud properties
+    type: string
+    default: ''
+  - name: dotNetSdkVersion
+    displayName: .NET SDK version
+    type: string
+    default: 6.x
+
+stages:
+  - template: ../stages/build-package-stage.yml
+    parameters:
+      packageProject: ${{ parameters.packageProject }}
+      unitTestsProject: ${{ parameters.unitTestsProject }}
+      additionalProjects: ${{ parameters.additionalProjects }}
+      sonarCloudServiceConnection: ${{ parameters.sonarCloudServiceConnection }}
+      sonarCloudOrganisation: ${{ parameters.sonarCloudOrganisation }}
+      sonarCloudProjectKey: ${{ parameters.sonarCloudProjectKey }}
+      sonarCloudProjectName: ${{ parameters.sonarCloudProjectName }}
+      sonarCloudPublish: ${{ parameters.sonarCloudPublish }}  
+      ${{ if parameters.sonarCloudProperties }}:
+        sonarCloudProperties: ${{ parameters.sonarCloudProperties }}
+      dotNetSdkVersion: ${{ parameters.dotNetSdkVersion }}  
+  - template: ../stages/solution-checker-stage.yml
+    parameters:
+      serviceConnection: ${{ parameters.serviceConnection }}
+      filesToAnalyse: ${{ parameters.filesToAnalyse }}
+      artifact: package

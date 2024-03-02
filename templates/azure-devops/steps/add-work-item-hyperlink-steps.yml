@@ -1,0 +1,75 @@
+parameters:
+  - name: workItemId
+    displayName: Work Item ID
+    type: string
+  - name: url
+    displayName: External URL
+    type: string
+  - name: comment
+    displayName: Comment
+    type: string
+  - name: historyComment
+    displayName: History comment
+    type: string
+    default: ''
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Add work item hyperlink
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+steps:
+  - powershell: |
+      Write-Host "Adding a work item hyperlink."
+      Write-Host "`tWork item ID: $env:ADDHYPERLINK_WORKITEMID"
+      Write-Host "`tURL: $env:ADDHYPERLINK_URL"
+      Write-Host "`tComment: $env:ADDHYPERLINK_COMMENT"
+      
+      $apiBaseUrl = "$env:SYSTEM_TEAMFOUNDATIONCOLLECTIONURI$env:SYSTEM_TEAMPROJECT/"
+      $endpointUrl = "$($apiBaseUrl)_apis/wit/workitems/$($env:ADDHYPERLINK_WORKITEMID)?api-version=7.0"
+      $requestHeaders = @{
+          "Authorization" = "Bearer $env:AZURE_DEVOPS_EXT_PAT"
+          "Content-Type"  = "application/json-patch+json"
+      }
+      $patchDocument = [System.Collections.ArrayList]@(
+        @{
+          op    = "add"
+          path  = "/relations/-"
+          value = @{
+            url = $env:ADDHYPERLINK_URL
+            rel = "Hyperlink"
+            attributes = @{
+              comment = $env:ADDHYPERLINK_COMMENT
+              isLocked = $true
+            }
+          }
+        }
+      )
+      if ($env:ADDHYPERLINK_HISTORYCOMMENT) {
+        $patchDocument.Add(@{
+          op    = "add"
+          path  = "/fields/System.History"
+          value = $env:ADDHYPERLINK_HISTORYCOMMENT
+        }) | Out-Null
+      }
+      $requestBody = ConvertTo-Json -Depth 4 -InputObject $patchDocument -Compress
+      
+      $response = Invoke-WebRequest -Method Patch -Headers $requestHeaders -Uri $endpointUrl -Body $requestBody
+      
+      if ($response.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
+        Write-Error $response.StatusDescription
+        return
+      }
+      
+      Write-Host "Work item link added successfully."      
+    displayName: ${{ parameters.stepDisplayName }}
+    condition: ${{ parameters.condition }}
+    env:
+      AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
+      ADDHYPERLINK_WORKITEMID: ${{ parameters.workItemId }}
+      ADDHYPERLINK_URL: ${{ parameters.url }}
+      ADDHYPERLINK_COMMENT: ${{ parameters.comment }}
+      ADDHYPERLINK_HISTORYCOMMENT: ${{ parameters.historyComment }}

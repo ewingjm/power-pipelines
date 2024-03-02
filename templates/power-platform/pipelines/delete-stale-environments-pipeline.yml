@@ -1,0 +1,40 @@
+parameters:
+  - name: searchString
+    displayName: Delete environments with names matching (supports '*' wildcards)
+    type: string
+  - name: olderThanInDays
+    displayName: Delete environments older than (days)
+    type: number
+  - name: createdBy
+    displayName: Delete environments created by (Azure AD object ID)
+    type: string
+    default: ''
+    
+variables:
+  - group: Dynamics Environment Settings - Placeholder
+  - name: DeleteStaleEnvironments.Criteria.SearchString
+    value: ${{ parameters.searchString }}
+  - name: DeleteStaleEnvironments.Criteria.OlderThanInDays
+    value: ${{ parameters.olderThanInDays }}
+  - name: DeleteStaleEnvironments.Criteria.CreatedBy
+    value: ${{ parameters.createdBy }}
+
+steps:
+  # TODO: remove dependency on templates repository and script file.
+  - checkout: templates
+  - task: PowerShell@2
+    displayName: Delete environments
+    inputs:
+      targetType: filePath
+      filePath: $(Build.SourcesDirectory)/platforms/power-platform/dataverse/scripts/Remove-DataverseStaleEnvironments.ps1
+      arguments: >
+        -TenantId $env:DELETESTALEENVIRONMENTS_MANAGEMENTAPP_TENANTID
+        -ClientId $env:DELETESTALEENVIRONMENTS_MANAGEMENTAPP_CLIENTID
+        -ClientSecret $env:DELETESTALEENVIRONMENTS_MANAGEMENTAPP_CLIENTSECRET
+        -SearchString $env:DELETESTALEENVIRONMENTS_CRITERIA_SEARCHSTRING
+        -CreatedBy $env:DELETESTALEENVIRONMENTS_CRITERIA_CREATEDBY
+        -OlderThanInDays $env:DELETESTALEENVIRONMENTS_CRITERIA_OLDERTHANINDAYS
+    env:
+      DELETESTALEENVIRONMENTS_MANAGEMENTAPP_CLIENTID: $(Client ID)
+      DELETESTALEENVIRONMENTS_MANAGEMENTAPP_CLIENTSECRET: $(Client Secret)
+      DELETESTALEENVIRONMENTS_MANAGEMENTAPP_TENANTID: $(Tenant ID)

@@ -1,0 +1,284 @@
+parameters:
+  - name: serviceConnection
+    displayName: The service connection
+    type: string
+  - name: categoryStates
+    displayName: Category states
+    type: object
+  - name: metadata
+    displayName: Metadata
+    type: object
+    default: {}
+  - name: createdBy
+    displayName: Created by
+    type: string
+    default: ''
+
+stages:
+  - stage: DeleteEnvironments
+    displayName: Delete environments
+    jobs:
+      - job: DeleteEnvironments
+        displayName: Delete environments
+        variables:
+          DeleteEnvironments.CategoryStates: ${{ convertToJson(parameters.categoryStates) }}
+          DeleteEnvironments.Metadata: ${{ convertToJson(parameters.metadata) }}
+          DeleteEnvironments.CreatedBy: ${{ parameters.createdBy }}
+        steps:
+          - task: PowerPlatformToolInstaller@2
+            displayName: Install Power Platform Build Tools
+          - task: PowerPlatformSetConnectionVariables@2
+            displayName: Set connection variables
+            name: SetConnectionVariables
+            inputs:
+              authenticationType: PowerPlatformSPN
+              PowerPlatformSPN: ${{ parameters.serviceConnection }}
+          - powershell: |
+              function Test-ObjectSubset {
+                param (
+                    [PSObject] $Object1,
+                    [PSObject] $Object2
+                )
+
+                if ($Object1 -isnot [PSObject] -or $Object2 -isnot [PSObject]) {
+                    return $Object1 -eq $Object2
+                }
+
+                $Object1Properties = $Object1 | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name
+                $Object2Properties = $Object2 | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name
+
+                foreach ($property in $Object1Properties) {
+                    if ($Object2Properties -notcontains $property) {
+                        return $false
+                    }
+
+                    $Object1Value = $Object1 | Select-Object -ExpandProperty $property
+                    $Object2Value = $Object2 | Select-Object -ExpandProperty $property
+
+                    if (!(Test-ObjectSubset $Object1Value $Object2Value)) {
+                        return $false
+                    }
+                }
+
+                return $true
+              }
+
+              $getProjectParameters = @{
+                  Method          = "GET"
+                  Headers         = @{
+                      "Authorization" = "Bearer $env:AZURE_DEVOPS_EXT_PAT"
+                      "Content-Type"  = "application/json"
+                  }
+                  Uri             = "$($env:SYSTEM_TEAMFOUNDATIONCOLLECTIONURI)_apis/projects/$env:SYSTEM_TEAMPROJECTID/properties?keys=System.ProcessTemplateType&api-version=7.1-preview.1"
+                  UseBasicParsing = $true
+              }
+
+              $getProjectResponse = Invoke-WebRequest @getProjectParameters
+              if ($getProjectResponse.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
+                  Write-Error $getProjectResponse.StatusDescription
+                  return
+              }
+
+              $projectProperties = ConvertFrom-Json -InputObject $getProjectResponse.Content
+              $processTypeId = $projectProperties.value[0].value
+
+              $getWorkItemTypesParameters = @{
+                  Method          = "GET"
+                  Headers         = $getProjectParameters.Headers
+                  Uri             = "$($env:SYSTEM_TEAMFOUNDATIONCOLLECTIONURI)_apis/work/processes/$processTypeId/workitemtypes?`$expand=States&api-version=7.0"
+                  UseBasicParsing = $true
+              }
+
+              $getWorkItemTypesResponse = Invoke-WebRequest @getWorkItemTypesParameters
+              if ($getWorkItemTypesResponse.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
+                  Write-Error $getWorkItemTypesResponse.StatusDescription
+                  return
+              }
+
+              $workItemTypes = ConvertFrom-Json -InputObject $getWorkItemTypesResponse.Content
+              $categoryStates = $env:DELETEENVIRONMENTS_CATEGORYSTATES | ConvertFrom-Json
+              $states = $workItemTypes.value.states | `
+                  Where-Object stateCategory -in $categoryStates | `
+                  Select-Object -ExpandProperty name -Unique
+
+              $apiBase = "$($env:SYSTEM_TEAMFOUNDATIONCOLLECTIONURI)$($env:SYSTEM_TEAMPROJECT)/"
+              $stateConditions = ($states | ForEach-Object { return "[System.State] = '$($_)'" }) -join " OR "
+              $workItemQuery = @"
+              SELECT [System.Id] 
+              FROM WorkItems 
+              WHERE [System.HyperlinkCount] > 0 
+              AND ($stateConditions)
+              "@
+              
+              Write-Host "Getting work items with the following query:"
+              Write-Host $workItemQuery
+
+              $wiqlParameters = @{
+                  Method          = "POST"
+                  Headers         = @{
+                      "Authorization" = "Bearer $env:AZURE_DEVOPS_EXT_PAT"
+                      "Content-Type"  = "application/json"
+                  }
+                  Uri             = "$($apiBase)_apis/wit/wiql?api-version=7.0"
+                  Body            = @{ query = $workItemQuery } | ConvertTo-Json -Compress
+                  UseBasicParsing = $true
+              }
+
+              $response = Invoke-WebRequest @wiqlParameters
+              if ($response.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
+                  Write-Error $response.StatusDescription
+                  return
+              }
+
+              $content = ConvertFrom-Json -InputObject $response.Content
+              if (-not($content.workItems.length -gt 0)) {
+                  Write-Host "No work items found."
+                  return
+              }
+
+              Write-Host "Found $($content.workItems.length) matching work items."
+
+              $environmentsToDelete = [System.Collections.ArrayList]@()
+              $counter = @{ Value = 0 }
+              $workItemBatches = $content.workItems | Group-Object -Property { [math]::Floor($counter.Value++ / 200) }
+              for ($batch = 0; $batch -lt $workItemBatches.Values.Count; $batch++) {
+                  $currentBatch = $workItemBatches[$batch]
+                  Write-Host "Retrieving work item links for batch $($batch + 1) ($($currentBatch.Group.Count) work items)."
+                  $ids = [string]::Join(",", $currentBatch.Group.id)
+                  $listWorkItemsParameters = @{
+                      Method          = "GET"
+                      Headers         = $wiqlParameters.Headers
+                      Uri             = "$($apiBase)_apis/wit/workitems?ids=$ids&`$expand=relations&api-version=7.0"
+                      UseBasicParsing = $true
+                  }
+
+                  $listWorkItemsResponse = Invoke-WebRequest @listWorkItemsParameters
+                  if ($listWorkItemsResponse.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
+                      Write-Error $listWorkItemsResponse.StatusDescription
+                      return
+                  }
+
+                  $workItems = ConvertFrom-Json -InputObject $listWorkItemsResponse.Content
+                  $metadataQuery = $env:DELETEENVIRONMENTS_METADATA | ConvertFrom-Json
+                  $workItems.value | ForEach-Object {
+                      $workItem = $_
+                      [array]$hyperlinksWithComments = $_.relations | Where-Object { $_.rel -eq "Hyperlink" -and $_.attributes.comment -ne $null }
+                      $hyperlinksWithComments | ForEach-Object {
+                          try {
+                              $metadata = $_.attributes.comment | ConvertFrom-Json 
+                          }
+                          catch [System.ArgumentException] {
+                              # Silently Continue 
+                          }
+
+                          if (-not(Test-ObjectSubset -Object1 $metadataQuery -Object2 $metadata)) {
+                              Write-Host "`t - Work item $($workItem.id) link to $($_.url) did not match metadata query."
+                              return
+                          }
+
+                          if ($_.url -notmatch ".*\.crm\d+\.dynamics\.com") {
+                              Write-Host "`t - Work item $($workItem.id) link to $($_.url) did not contain a valid URL."
+                              return
+                          }
+
+                          Write-Host "`t - URL $($_.url) for work item $($workItem.id) matched metadata query."
+                          $environmentsToDelete.Add(@{
+                                  workItemId = $workItem.id
+                                  url        = $_.url
+                                  linkIndex  = $workItem.relations.IndexOf($_)
+                              }) | Out-Null
+                      }
+                  }
+              }
+
+              if ($environmentsToDelete.Count -eq 0) {
+                  Write-Host "No environments found to delete."
+                  return
+              }
+
+              if (-not (Get-Module Microsoft.PowerApps.Administration.PowerShell -ListAvailable)) {
+                  Install-Module Microsoft.PowerApps.Administration.PowerShell -Scope CurrentUser -Force
+                  Write-Host "Microsoft.PowerApps.Administration.PowerShell installed"
+              }
+
+              Write-Host "Authenticating to management API as $env:DELETEENVIRONMENTS_MANAGEMENTAPP_APPLICATIONID."
+              Add-PowerAppsAccount `
+                  -TenantID $env:DELETEENVIRONMENTS_MANAGEMENTAPP_TENANTID `
+                  -ApplicationId $env:DELETEENVIRONMENTS_MANAGEMENTAPP_APPLICATIONID `
+                  -ClientSecret $env:DELETEENVIRONMENTS_MANAGEMENTAPP_CLIENTSECRET
+
+              if ($env:DELETEENVIRONMENTS_CREATEDBY) {
+                  Write-Host "Getting environments created by $env:DELETEENVIRONMENTS_CREATEDBY."
+                  $environments = Get-AdminPowerAppEnvironment -CreatedBy $env:DELETEENVIRONMENTS_CREATEDBY
+              }
+              else {
+                  Write-Host "Getting all environments."
+                  $environments = Get-AdminPowerAppEnvironment
+              }
+              $environments = $environments | Select-Object EnvironmentName, DisplayName, Internal
+
+              if (-not($environments.Count -gt 0)) {
+                  Write-Host "No environments found matching the search criteria."
+                  return
+              }
+
+              Write-Host "Found $($environments.Count) total environments."
+
+              $environmentsToDelete | ForEach-Object {
+                  $environmentToDelete = $_
+                  $matchingEnvironment = $environments | Where-Object { 
+                      ([System.Uri]$_.Internal.properties.linkedEnvironmentMetadata.instanceUrl).Host -eq ([System.Uri]$environmentToDelete.url).Host }
+
+                  if ($matchingEnvironment) {
+                      Write-Host "Deleting $($matchingEnvironment.DisplayName)"
+                      try {
+                          Remove-AdminPowerAppEnvironment -EnvironmentName $matchingEnvironment.EnvironmentName | Out-Null
+                          Write-Host "Deleted environment for $($_.workItemId)."
+                      }
+                      catch {
+                          Write-Warning "Failed to delete $($matchingEnvironment.DisplayName)."
+                          Write-Warning $_
+                          continue
+                      }
+                  }
+
+                  $patchDocument = @(
+                      @{
+                          op    = "add"
+                          path  = "/fields/System.History"
+                          value = "<div>Deleted development environment.</div><div><br></div><div><b>URL</b>: <a href=""$($_.url)"">$($_.url)</a></div>"
+                      },
+                      @{
+                          op    = "remove"
+                          path  = "/relations/$($_.linkIndex)"
+                          value = $null
+                      }
+                  )
+
+                  $deleteRelationParameters = @{
+                      Method          = "PATCH"
+                      Headers         = @{
+                          "Authorization" = $getProjectParameters.Headers.Authorization
+                          "Content-Type"  = "application/json-patch+json"
+                      }
+                      Uri             = "$($apiBase)_apis/wit/workitems/$($_.workItemId)?api-version=7.0"
+                      Body            = ConvertTo-Json -InputObject $patchDocument -Compress
+                      UseBasicParsing = $true
+                  }
+
+                  $deleteRelationResponse = Invoke-WebRequest @deleteRelationParameters
+                  if ($deleteRelationResponse.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
+                      Write-Warning $deleteRelationResponse.StatusDescription
+                      continue
+                  }
+                  
+                  Write-Host "Deleted work item hyperlink for $($_.workItemId)."
+              }
+              
+              Write-Host "Finished processing work items."
+            displayName: Delete work item environments
+            env:
+              AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
+              DELETEENVIRONMENTS_MANAGEMENTAPP_TENANTID: $(SetConnectionVariables.BuildTools.TenantId)
+              DELETEENVIRONMENTS_MANAGEMENTAPP_APPLICATIONID: $(SetConnectionVariables.BuildTools.ApplicationId)
+              DELETEENVIRONMENTS_MANAGEMENTAPP_CLIENTSECRET: $(SetConnectionVariables.BuildTools.ClientSecret)

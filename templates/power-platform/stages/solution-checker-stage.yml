@@ -1,0 +1,41 @@
+parameters:
+  - name: serviceConnection
+    type: string
+    displayName: The service connection
+  - name: artifact
+    type: string
+    displayName: The artifact containing the solutions
+  - name: filesToAnalyse
+    type: string
+    displayName: Files to analyse
+  - name: pipelineResource
+    type: string
+    displayName: The resource containing the artifact (if applicable)
+    default: ''
+  - name: condition
+    type: string
+    displayName: The stage condition
+    default: succeeded()
+  - name: dependsOn
+    type: object
+    displayName: Depends on
+    default: []
+  - name: continueOnError
+    type: boolean
+    displayName: Continue on error
+    default: false
+
+stages:
+  - stage: SolutionChecker
+    displayName: Solution checker
+    condition: ${{ parameters.condition }}
+    ${{ if gt(length(parameters.dependsOn), 0) }}:      
+      dependsOn: ${{ parameters.dependsOn }}
+    jobs:
+      - template: ../jobs/check-solutions-job.yml
+        parameters:
+          serviceConnection: ${{ parameters.serviceConnection }}
+          artifact: ${{ parameters.artifact }}
+          pipelineResource: ${{ parameters.pipelineResource }}
+          filesToAnalyse: ${{ parameters.filesToAnalyse }}
+          continueOnError: ${{ parameters.continueOnError }}

@@ -1,0 +1,96 @@
+parameters:
+  - name: environment
+    displayName: Environment
+    type: string
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: packageResource
+    displayName: Package resource
+    type: string
+    default: ''
+  - name: packageArtifact
+    displayName: Package artifact
+    type: string
+  - name: packageFile
+    displayName: Package file
+    type: string
+  - name: url
+    displayName: URL
+    type: string
+    default: ''
+  - name: preDeploymentSteps
+    displayName: Pre-deployment steps
+    type: stepList
+    default: []
+  - name: postDeploymentSteps
+    displayName: Post-deployment steps
+    type: stepList
+    default: []
+  - name: config
+    displayName: Package Deployer config file
+    type: string
+    default: ''
+  - name: timeoutInMinutes
+    displayName: Timeout in minutes
+    type: number
+    default: 120
+  - name: deploymentName
+    displayName: Deployment name
+    type: string
+    default: DeployPackage
+  - name: deploymentDisplayName
+    displayName: Deployment display name
+    type: string
+    default: Deploy package
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+jobs:
+  - deployment: ${{ parameters.deploymentName }}
+    timeoutInMinutes: ${{ parameters.timeoutInMinutes }}
+    ${{ if parameters.dependsOn }}:
+      dependsOn: ${{ parameters.dependsOn }}
+    displayName: ${{ parameters.deploymentDisplayName }}
+    environment: ${{ parameters.environment }}
+    variables:
+      DeployPackage.PackageFileName: ${{ parameters.packageFile }}
+      ${{ if parameters.packageResource }}:
+        DeployPackage.PackageDirectory: ${{ format('$(Pipeline.Workspace)/{0}/{1}', parameters.packageResource, parameters.packageArtifact) }}
+      ${{ if not(parameters.packageResource) }}:
+        DeployPackage.PackageDirectory: ${{ format('$(Pipeline.Workspace)/{0}', parameters.packageArtifact) }}
+      DeployPackage.PackageFile: $(DeployPackage.PackageDirectory)/$(DeployPackage.PackageFileName)
+      ${{ if parameters.url }}:
+        BuildTools.EnvironmentUrl: ${{ parameters.url }}
+      ${{ if parameters.config }}:
+        DeployPackage.Config: ${{ parameters.config }}
+    condition: ${{ parameters.condition }}
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - task: PowerPlatformToolInstaller@2
+              displayName: Install Power Platform Build Tools
+              inputs:
+                DefaultVersion: true
+            - ${{ if gt(length(parameters.preDeploymentSteps), 0) }}:
+              - ${{ parameters.preDeploymentSteps }}
+            - ${{ if parameters.config }}:
+              - template: ../steps/use-package-deployer-import-config-steps.yml
+                parameters:
+                  config: $(DeployPackage.Config)
+                  packageDirectory: $(DeployPackage.PackageDirectory)
+            - task: PowerPlatformDeployPackage@2
+              displayName: Deploy package
+              inputs:
+                authenticationType: PowerPlatformSPN
+                PowerPlatformSPN: ${{ parameters.serviceConnection }}
+                PackageFile: $(DeployPackage.PackageFile)
+            - ${{ if gt(length(parameters.postDeploymentSteps), 0) }}:
+              - ${{ parameters.postDeploymentSteps }}

@@ -1,0 +1,253 @@
+parameters:
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: packageProject
+    displayName: Package project
+    type: string
+  - name: displayNamePrefix
+    displayName: Display name prefix
+    type: string
+  - name: domainNamePrefix
+    displayName: Domain name prefix
+    type: string
+  - name: solutionSourcePattern
+    displayName: Solution source pattern
+    type: string
+  - name: packageSourcePatterns
+    displayName: Package Deployer template source patterns
+    type: object
+  - name: unitTestsProject
+    displayName: Unit tests project
+    type: string
+    default: ''
+  - name: additionalProjects
+    displayName: Additionals projects
+    type: object
+    default: []
+  - name: filesToAnalyse
+    displayName: Files to analyse (Solution Checker)
+    type: string
+    default: '**/*.zip'
+  - name: webResourceSourcePatterns
+    displayName: Web resource source patterns
+    type: object
+    default: []
+  - name: assemblySourcePatterns
+    displayName: Assembly source patterns
+    type: object
+    default: []
+  - name: additionalPatterns
+    displayName: Additional patterns  
+    type: object
+    default: []
+  - name: securityGroupId
+    displayName: Security group ID
+    type: string
+    default: ''
+  - name: templates
+    displayName: Templates
+    type: string
+    default: ''
+  - name: location
+    displayName: Location
+    type: string
+    default: europe
+  - name: language
+    displayName: Language
+    type: string
+    default: English
+  - name: currency
+    displayName: Currency
+    type: string
+    default: GBP
+  - name: config
+    displayName: Package Deployer config file
+    type: string
+    default: ''
+  - name: prepareEnvironmentJobs
+    displayName: Optional pre-deployment jobs
+    type: jobList
+    default: []
+  - name: finaliseEnvironmentJobs
+    displayName: Optional post-deployment jobs
+    type: jobList
+    default: []
+  - name: testJobs
+    displayName: Optional test jobs
+    type: jobList
+    default: []
+  - name: sonarCloudServiceConnection
+    displayName: SonarCloud service connection
+    type: string
+    default: ''
+  - name: sonarCloudOrganisation
+    displayName: SonarCloud organisation
+    type: string
+    default: ''
+  - name: sonarCloudProjectKey
+    displayName: SonarCloud project key
+    type: string
+    default: $(Build.Repository.Name)
+  - name: sonarCloudProjectName
+    displayName: SonarCloud project name
+    type: string
+    default: $(Build.Repository.Name)
+  - name: sonarCloudPublish
+    displayName: SonarCloud publish
+    type: boolean
+    default: true
+  - name: sonarCloudProperties
+    displayName: SonarCloud properties
+    type: string
+    default: ''
+  - name: dotNetSdkVersion
+    displayName: .NET SDK version
+    type: string
+    default: 6.x
+
+stages:
+  - template: ../stages/build-package-stage.yml
+    parameters:
+      packageProject: ${{ parameters.packageProject }}
+      unitTestsProject: ${{ parameters.unitTestsProject }}
+      additionalProjects: ${{ parameters.additionalProjects }}
+      sonarCloudServiceConnection: ${{ parameters.sonarCloudServiceConnection }}
+      sonarCloudOrganisation: ${{ parameters.sonarCloudOrganisation }}
+      sonarCloudProjectKey: ${{ parameters.sonarCloudProjectKey }}
+      sonarCloudProjectName: ${{ parameters.sonarCloudProjectName }}
+      sonarCloudPublish: ${{ parameters.sonarCloudPublish }}
+      ${{ if parameters.sonarCloudProperties }}:
+        sonarCloudProperties: ${{ parameters.sonarCloudProperties }}
+      dotNetSdkVersion: ${{ parameters.dotNetSdkVersion }}  
+  - template: ../stages/analyse-updates-stage.yml
+    parameters:
+      solutionSourcePattern: ${{ parameters.solutionSourcePattern }}
+      webResourceSourcePatterns: ${{ parameters.webResourceSourcePatterns }}
+      assemblySourcePatterns: ${{ parameters.assemblySourcePatterns }}
+      additionalPatterns: 
+        - filePatterns: ${{ parameters.packageSourcePatterns }}
+          stepName: GetPackageTemplateUpdated
+          stepDisplayName: Get package template updated
+        - ${{ each pattern in parameters.additionalPatterns }}:
+          - ${{ pattern }}
+  - template: ../stages/solution-checker-stage.yml
+    parameters:
+      condition: and(succeeded(), eq(dependencies.AnalyseUpdates.outputs['AnalyseUpdates.GetSolutionUpdates.Solution.IsUpdated'], 'true'))
+      dependsOn:
+        - BuildPackage
+        - AnalyseUpdates
+      serviceConnection: ${{ parameters.serviceConnection }}
+      filesToAnalyse: ${{ parameters.filesToAnalyse }}
+      artifact: package
+  - template: ../stages/create-environment-stage.yml
+    parameters:
+      condition: |
+        and(
+          not(canceled()),
+          in(dependencies.AnalyseUpdates.result, 'Succeeded', 'SucceededWithIssues'),
+          in(dependencies.BuildPackage.result, 'Succeeded', 'SucceededWithIssues'),
+          in(dependencies.SolutionChecker.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'),
+          or(
+            dependencies.AnalyseUpdates.outputs['AnalyseUpdates.GetSolutionUpdates.Solution.IsUpdated'], 
+            dependencies.AnalyseUpdates.outputs['AnalyseUpdates.GetPackageTemplateUpdated.IsUpdated']
+          )
+        )
+      dependsOn:
+        - BuildPackage
+        - SolutionChecker
+        - AnalyseUpdates
+      displayNamePrefix: ${{ parameters.displayNamePrefix }}
+      displayNameMetadata:
+        pullRequestId: $(System.PullRequest.PullRequestId)
+        commitHash: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetShortCommitHash.CommitHash'] ]
+      domainNamePrefix: ${{ parameters.domainNamePrefix }}
+      serviceConnection: ${{ parameters.serviceConnection }}
+      securityGroupId: ${{ parameters.securityGroupId }}
+      templates: ${{ parameters.templates }}
+      location: ${{ parameters.location }}
+      language: ${{ parameters.language }}
+      currency: ${{ parameters.currency }}
+  - ${{ if gt(length(parameters.prepareEnvironmentJobs), 0) }}:
+    - stage: PrepareEnvironment
+      displayName: Prepare environment
+      condition: and(not(canceled()), in(dependencies.CreateEnvironment.result, 'Succeeded', 'SucceededWithIssues'))
+      dependsOn: 
+        - AnalyseUpdates
+        - CreateEnvironment
+      variables:
+        BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+        BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+      jobs: ${{ parameters.prepareEnvironmentJobs }}
+  - template: ../stages/deploy-package-stage.yml
+    parameters:
+      ${{ if eq(length(parameters.prepareEnvironmentJobs), 0) }}:
+        condition: and(not(canceled()),in(dependencies.CreateEnvironment.result, 'Succeeded', 'SucceededWithIssues'))
+      ${{ if gt(length(parameters.prepareEnvironmentJobs), 0) }}:
+        condition: and(not(canceled()), in(dependencies.PrepareEnvironment.result, 'Succeeded', 'SucceededWithIssues'))
+      dependsOn: 
+        - AnalyseUpdates
+        - BuildPackage
+        - CreateEnvironment
+        - ${{ if gt(length(parameters.prepareEnvironmentJobs), 0) }}:
+          - PrepareEnvironment
+      environment: Ephemeral
+      serviceConnection: ${{ parameters.serviceConnection }}
+      packageArtifact: package
+      packageFile: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetPackageFile.PackageFile'] ]
+      url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+      ${{ if parameters.config }}:
+        config: ${{ parameters.config }}
+  - ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
+    - stage: FinaliseEnvironment
+      displayName: Finalise environment
+      condition: and(not(canceled()), in(dependencies.DeployPackage.result, 'Succeeded', 'SucceededWithIssues'))
+      dependsOn: 
+        - AnalyseUpdates
+        - CreateEnvironment
+        - DeployPackage
+      variables:
+        BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+        BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+      jobs: ${{ parameters.finaliseEnvironmentJobs }}
+  - ${{ if gt(length(parameters.testJobs), 0) }}:
+    - stage: Test
+      displayName: Test
+      ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
+        condition: and(not(canceled()), in(dependencies.FinaliseEnvironment.result, 'Succeeded', 'SucceededWithIssues'))
+      ${{ if eq(length(parameters.finaliseEnvironmentJobs), 0) }}:
+        condition: and(not(canceled()), in(dependencies.DeployPackage.result, 'Succeeded', 'SucceededWithIssues'))
+      dependsOn:
+        - AnalyseUpdates
+        - CreateEnvironment
+        - DeployPackage
+        - ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
+          - FinaliseEnvironment
+      variables:
+        BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+        BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+      jobs: ${{ parameters.testJobs }}
+  - template: ../stages/wait-for-manual-validation-stage.yml
+    parameters:
+      ${{ if gt(length(parameters.testJobs), 0) }}:
+        condition: in(dependencies.Test.result, 'Succeeded', 'SucceededWithIssues')
+      ${{ if and(eq(length(parameters.testJobs), 0), gt(length(parameters.finaliseEnvironmentJobs), 0)) }}:
+        condition: in(dependencies.FinaliseEnvironment.result, 'Succeeded', 'SucceededWithIssues')
+      ${{ if and(eq(length(parameters.testJobs), 0), eq(length(parameters.finaliseEnvironmentJobs), 0)) }}:
+        condition: in(dependencies.DeployPackage.result, 'Succeeded', 'SucceededWithIssues')
+      dependsOn: 
+        - CreateEnvironment
+        - DeployPackage
+        - ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
+          - FinaliseEnvironment
+        - ${{ if gt(length(parameters.testJobs), 0) }}:
+          - Test
+      url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+  - template: ../stages/delete-environment-stage.yml
+    parameters:
+      condition: not(eq(dependencies.CreateEnvironment.outputs['CreateEnvironment.PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'], ''))
+      dependsOn:
+        - CreateEnvironment
+        - ManualValidation
+      serviceConnection: ${{ parameters.serviceConnection }}
+      url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]

@@ -1,0 +1,51 @@
+parameters:
+  - name: workItemId
+    displayName: Work Item ID
+    type: string
+  - name: comment
+    displayName: comment
+    type: string
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Add work item comment
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+steps:
+  - powershell: |
+      Write-Host "Adding a work item comment."
+      Write-Host "`tWork item ID: $env:ADDCOMMENT_WORKITEMID"
+      Write-Host "`tComment: $env:ADDCOMMENT_COMMENT"
+      
+      $apiBaseUrl = "$env:SYSTEM_TEAMFOUNDATIONCOLLECTIONURI$env:SYSTEM_TEAMPROJECT/"
+      $endpointUrl = "$($apiBaseUrl)_apis/wit/workitems/$($env:ADDCOMMENT_WORKITEMID)?api-version=7.0"
+      $requestHeaders = @{
+          "Authorization" = "Bearer $env:AZURE_DEVOPS_EXT_PAT"
+          "Content-Type"  = "application/json-patch+json"
+      }
+      $patchDocument = @(
+        @{
+          op    = "add"
+          path  = "/fields/System.History"
+          value = $env:ADDCOMMENT_COMMENT
+        }
+      )
+      $requestBody = ConvertTo-Json -Depth 2 -InputObject $patchDocument -Compress
+      
+      $response = Invoke-WebRequest -Method Patch -Headers $requestHeaders -Uri $endpointUrl -Body $requestBody
+      
+      if ($response.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
+        Write-Error $response.StatusDescription
+        return
+      }
+      
+      Write-Host "Work item comment added successfully."      
+    displayName: ${{ parameters.stepDisplayName }}
+    condition: ${{ parameters.condition }}
+    env:
+      AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
+      ADDCOMMENT_WORKITEMID: ${{ parameters.workItemId }}
+      ADDCOMMENT_COMMENT: ${{ parameters.comment }}

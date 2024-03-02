@@ -1,0 +1,20 @@
+parameters:
+  - name: stepName
+    displayName: Step name
+    type: string
+    default: ''
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Push commits
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+steps:
+  - powershell: git push -u origin HEAD
+    displayName: ${{ parameters.stepDisplayName }}
+    ${{ if parameters.stepName }}:
+      name: ${{ parameters.stepName }}
+    condition: ${{ parameters.condition }}
