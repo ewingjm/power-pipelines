@@ -47,7 +47,7 @@ This section details the pipeline templates that are available.
 
 Creates a development environment for a given solution within a package. 
 
-[Example](./samples/pipelines/create-development-environment.yml)
+[Example](./samplespipelines/create-development-environment.yml)
 
 | Parameter                              | Description                                                                                                                                                                                                                                |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -76,7 +76,7 @@ Note that all solutions within the package (if any) other than the given solutio
 
 Syncs the metadata for a given solution.
 
-[Example](./samples/pipelines/deploy-to-test.yml)
+[Example](./samplespipelines/deploy-to-test.yml)
 
 | Parameter                      | Description                                                                                 |
 | ------------------------------ | ------------------------------------------------------------------------------------------- |
@@ -93,7 +93,7 @@ Syncs the metadata for a given solution.
 The `postUnpackSteps` parameter can be used to extend the extract process. The Solution Packager alone is not always sufficient to avoid recurrent conflicts with pull requests. 
 For example, pull requests updating the same solution(s) will frequently generate conflicts that are difficult to resolve around the `MissingDependencies` elements of the _Solution.xml_. 
 A step [template](./steps/split-missing-dependencies-steps.yml) has been created to further unpack the missing dependencies into their own individual files. This makes conflicts much easier to resolve.
-Note that any changes to the unpack process will also need changes to the pack process. Refer to the _pack missing dependencies_ sample [README.md](./samples/pack-missing-dependencies/README.md)
+Note that any changes to the unpack process will also need changes to the pack process. Refer to the _pack missing dependencies_ sample [README.md](./samplespack-missing-dependencies/README.md)
 
 ### Validate package
 
@@ -101,7 +101,7 @@ Note that any changes to the unpack process will also need changes to the pack p
 
 A validation pipeline template that can build and deploy changes in a pull request to an environment.
 
-[Example](./samples/pipelines/validate-package.yml)
+[Example](./samplespipelines/validate-package.yml)
 
 | Parameter                                  | Description                                                                                                                                                                                                                                 |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -160,7 +160,7 @@ To refer to the output variables created by patterns passed with `additionalPatt
 
 Builds a Package Deployer package (i.e. a package project that has been created using the Power Apps CLI) and analyses the solutions with the Solution Checker. 
 
-[Example](./samples/pipelines/build-package.yml)
+[Example](./samplespipelines/build-package.yml)
 
 | Parameter                                  | Description                                                                                              |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
@@ -187,7 +187,7 @@ patch-version-bump-message: "(build|chore|ci|docs|fix|perf|refactor|revert|style
 
 This template does **not** handle the versioning of your Dataverse solutions. It will only version the package as a whole. For information on how to version your solutions, refer to [PowerVersion](https://github.com/ewingjm/power-version)
 
-At the time of writing, the packing of solution projects created via the Power Apps CLI requires a separate MappingFile.xml to the unpack operation. This is due to the fact that the pack operation happens on a copy of the metadata folder that has been copied to the intermediate output path (_obj_). Refer to the _transform mapping directives_ sample [README.md](./samples/transform-mapping-directives/README.md) for a solution to this problem.
+At the time of writing, the packing of solution projects created via the Power Apps CLI requires a separate MappingFile.xml to the unpack operation. This is due to the fact that the pack operation happens on a copy of the metadata folder that has been copied to the intermediate output path (_obj_). Refer to the _transform mapping directives_ sample [README.md](./samplestransform-mapping-directives/README.md) for a solution to this problem.
 
 ### Deploy packages
 
@@ -195,7 +195,7 @@ At the time of writing, the packing of solution projects created via the Power A
 
 Deploys one or more Package Deployer packages to an environment.
 
-[Example](./samples/pipelines/deploy-to-test.yml)
+[Example](./samplespipelines/deploy-to-test.yml)
 
 | Parameter                         | Description                                                                                                                                                         |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -226,7 +226,7 @@ Please note that the version generated for the runs of any pipelines that extend
 
 Deletes environments (created by pipelines extending other templates in this repository) that are linked to work items in a given category state.
 
-[Example](./samples/pipelines/delete-inactive-work-item-environments.yml)
+[Example](./samplespipelines/delete-inactive-work-item-environments.yml)
 
 | Parameter                | Description                                                                                                                                                                                                                                |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
