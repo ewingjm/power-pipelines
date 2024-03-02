@@ -8,7 +8,7 @@ schedules:
     displayName: Daily midnight run
     branches:
       include:
-        - master
+        - main
     always: true
 
 trigger: none
@@ -17,23 +17,24 @@ resources:
   pipelines:
     - pipeline: inventory
       source: power-platform-inventory
-      branch: master
+      branch: main
     - pipeline: sales
       source: power-platform-sales
-      branch: master
+      branch: main
     - pipeline: marketing
       source: power-platform-marketing
-      branch: master
+      branch: main
 
 resources:
   repositories:
-    - repository: templates
-      type: git
-      name: power-platform-templates
-      ref: refs/heads/master 
+    - repository: power-pipelines
+      name: ewingjm/power-pipelines
+      ref: refs/heads/main 
+      type: github
+      endpoint: your-service-endpoint
 
 extends:
-  template: platforms/power-platform/dataverse/pipelines/deploy-packages-pipeline.yml
+  template: templates/power-platform/pipelines/deploy-packages-pipeline.yml@power-pipelines
   parameters:
     serviceConnection: Contoso - Test
     environment: Test

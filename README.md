@@ -131,7 +131,7 @@ A validation pipeline template that can build and deploy changes in a pull reque
 | sonarCloudPublish **[optional]**           | Whether to publish the SonarCloud results to Azure DevOps. Defaults to `true`.                                                                                                                                                              |
 | dotNetSdkVersion **[optional]**            | The .NET SDK version to use to build the package. Defaults to 6.x.                                                                                                                                                                         |
 
-The validation pipeline builds the package, analyses the updates, runs the Solution Checker (if any solutions have been updated), creates an environment, deploys to the environment, and waits for manual validation. This allows for changes to be built, deployed, and tested before merging to master.
+The validation pipeline builds the package, analyses the updates, runs the Solution Checker (if any solutions have been updated), creates an environment, deploys to the environment, and waits for manual validation. This allows for changes to be built, deployed, and tested before merging to main.
 
 In the event that you are executing automating tests, these can be ran as part of the `testJobs`. Jobs passed to `prepareEnvironmentJobs`, `finaliseEnvironmentJobs`, and `testJobs` have access to the `BuildTools.EnvironmentUrl` and `BuildTools.EnvironmentId` variables that point to the newly created environment.
 
@@ -176,7 +176,7 @@ Builds a Package Deployer package (i.e. a package project that has been created 
 
 The managed package is published as an artifact named `package`.
 
-This template uses GitVersion to version the build. Please ensure that you have a properly configured GitVersion.yml file in the root of your repository. Below is an example GitVersion.yml that uses GitVersion's [mainline](https://gitversion.net/docs/reference/modes/mainline) mode [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). This approach assumes you keep your master branch deployable to production at all times (recommended).
+This template uses GitVersion to version the build. Please ensure that you have a properly configured GitVersion.yml file in the root of your repository. Below is an example GitVersion.yml that uses GitVersion's [mainline](https://gitversion.net/docs/reference/modes/mainline) mode [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). This approach assumes you keep your main branch deployable to production at all times (recommended).
 
 ```yaml
 mode: mainline

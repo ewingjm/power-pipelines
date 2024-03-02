@@ -9,17 +9,18 @@ trigger:
   batch: false
   branches:
     include:
-      - master
+      - main
 
 resources:
   repositories:
-    - repository: templates
-      type: git
-      name: power-platform-templates
-      ref: refs/heads/master 
+    - repository: power-pipelines
+      name: ewingjm/power-pipelines
+      ref: refs/heads/main 
+      type: github
+      endpoint: your-service-endpoint
 
 extends:
-  template: platforms/power-platform/dataverse/pipelines/build-package-pipeline.yml@templates
+  template: templates/power-platform/pipelines/build-package-pipeline.yml@power-pipelines
   parameters:
     packageProject: deploy/Contoso.Sales.Deployment/Contoso.Sales.Deployment.csproj 
     serviceConnection: Sales Management App

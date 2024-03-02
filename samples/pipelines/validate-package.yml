@@ -10,16 +10,17 @@ trigger: none
 
 resources:
   repositories:
-    - repository: templates
-      type: git
-      name: trade.templates
-      ref: refs/heads/master
+    - repository: power-pipelines
+      name: ewingjm/power-pipelines
+      ref: refs/heads/main 
+      type: github
+      endpoint: your-service-endpoint
 
 variables:
   - group: Dynamics Environment Settings - Placeholder
 
 extends:
-  template: platforms/power-platform/dataverse/pipelines/validate-package-pipeline.yml@templates
+  template: templates/power-platform/pipelines/validate-package-pipeline.yml@power-pipelines
   parameters:
     packageProject: deploy/Contoso.Sales.Deployment/Contoso.Sales.Deployment.csproj 
     serviceConnection: Sales Management App

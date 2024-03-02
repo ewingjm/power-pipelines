@@ -22,13 +22,14 @@ trigger: none
 
 resources:
   repositories:
-    - repository: templates
-      type: git
-      name: power-platform-templates
-      ref: refs/heads/master 
+    - repository: power-pipelines
+      name: ewingjm/power-pipelines
+      ref: refs/heads/main 
+      type: github
+      endpoint: your-service-endpoint
 
 extends:
-  template: platforms/power-platform/dataverse/pipelines/create-development-environment-pipeline.yml@templates
+  template: templates/power-platform/pipelines/create-development-environment-pipeline.yml@power-pipelines
   parameters:
     solution: ${{ parameters.solution }}
     workItemId: ${{ parameters.workItemId }}

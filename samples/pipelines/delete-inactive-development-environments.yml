@@ -9,18 +9,19 @@ schedules:
     displayName: Daily midnight run
     branches:
       include:
-        - master
+        - main
     always: true
 
 resources:
   repositories:
-    - repository: templates
-      type: git
-      name: trade.templates
-      ref: refs/heads/master
+    - repository: power-pipelines
+      name: ewingjm/power-pipelines
+      ref: refs/heads/main 
+      type: github
+      endpoint: your-service-endpoint
 
 extends:
-  template: platforms/power-platform/dataverse/pipelines/delete-work-item-environments-pipeline.yml@templates
+  template: templates/power-platform/pipelines/delete-work-item-environments-pipeline.yml@power-pipelines
   parameters:
     serviceConnection: Sales Management App
     categorystates:
