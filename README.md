@@ -124,11 +124,6 @@ A validation pipeline template that can build and deploy changes in a pull reque
 | prepareEnvironmentJobs **[optional]**      | Additional jobs that should be ran after the environment is provisioned but prior to the deployment. These jobs have access to the `BuildTools.EnvironmentUrl` and `BuildTools.EnvironmentId` variables that point to the new environment.  |
 | finaliseEnvironmentJobs **[optional]**     | Additional jobs that should be ran after the environment is deployed to. These jobs have access to the `BuildTools.EnvironmentUrl` and `BuildTools.EnvironmentId` variables that point to the new environment.                              |
 | testJobs **[optional]**                    | Additional automated test jobs that should be ran after the environment is deployed to and finalised. These jobs have access to the `BuildTools.EnvironmentUrl` and `BuildTools.EnvironmentId` variables that point to the new environment. |
-| sonarCloudServiceConnection **[optional]** | The SonarCloud service connection to use.                                                                                                                                                                                                   |
-| sonarCloudOrganisation **[optional]**      | The SonarCloud organisation. Required if `sonarCloudServiceConnection` is specified.                                                                                                                                                        |
-| sonarCloudProjectKey **[optional]**        | The SonarCloud project key. Defaults to repository name.                                                                                                                                                                                    |
-| sonarCloudProjectName **[optional]**       | The SonarCloud project name. Defaults to repository name.                                                                                                                                                                                   |
-| sonarCloudPublish **[optional]**           | Whether to publish the SonarCloud results to Azure DevOps. Defaults to `true`.                                                                                                                                                              |
 | dotNetSdkVersion **[optional]**            | The .NET SDK version to use to build the package. Defaults to 6.x.                                                                                                                                                                         |
 
 The validation pipeline builds the package, analyses the updates, runs the Solution Checker (if any solutions have been updated), creates an environment, deploys to the environment, and waits for manual validation. This allows for changes to be built, deployed, and tested before merging to main.
@@ -167,11 +162,6 @@ Builds a Package Deployer package (i.e. a package project that has been created 
 | serviceConnection                          | The name of an Azure DevOps Power Platform service connection.                                           |
 | packageProject                             | The path to the Package Deployer MSBuild project.                                                        |
 | filesToAnalyse **[optional]**              | The pattern to match solution zip files to analyse with the Solution Checker. Defaults to all zip files. |
-| sonarCloudServiceConnection **[optional]** | The SonarCloud service connection to use.                                                                |
-| sonarCloudOrganisation **[optional]**      | The SonarCloud organisation. Required if `sonarCloudServiceConnection` is specified.                     |
-| sonarCloudProjectKey **[optional]**        | The SonarCloud project key. Defaults to repository name.                                                 |
-| sonarCloudProjectName **[optional]**       | The SonarCloud project name. Defaults to repository name.                                                |
-| sonarCloudPublish **[optional]**           | Whether to publish the SonarCloud results to Azure DevOps. Defaults to `true`.                           |
 | dotNetSdkVersion **[optional]**            | The .NET SDK version to use to build the package. Defaults to 6.x.                                      |
 
 The managed package is published as an artifact named `package`.

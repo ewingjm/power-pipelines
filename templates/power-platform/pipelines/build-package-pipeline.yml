@@ -17,30 +17,6 @@ parameters:
     displayName: Files to analyse (Solution Checker)
     type: string
     default: '**/*.zip'
-  - name: sonarCloudServiceConnection
-    displayName: SonarCloud service connection
-    type: string
-    default: ''
-  - name: sonarCloudOrganisation
-    displayName: SonarCloud organisation
-    type: string
-    default: ''
-  - name: sonarCloudProjectKey
-    displayName: SonarCloud project key
-    type: string
-    default: $(Build.Repository.Name)
-  - name: sonarCloudProjectName
-    displayName: SonarCloud project name
-    type: string
-    default: $(Build.Repository.Name)
-  - name: sonarCloudPublish
-    displayName: SonarCloud publish
-    type: boolean
-    default: true
-  - name: sonarCloudProperties
-    displayName: SonarCloud properties
-    type: string
-    default: ''
   - name: dotNetSdkVersion
     displayName: .NET SDK version
     type: string
@@ -52,13 +28,6 @@ stages:
       packageProject: ${{ parameters.packageProject }}
       unitTestsProject: ${{ parameters.unitTestsProject }}
       additionalProjects: ${{ parameters.additionalProjects }}
-      sonarCloudServiceConnection: ${{ parameters.sonarCloudServiceConnection }}
-      sonarCloudOrganisation: ${{ parameters.sonarCloudOrganisation }}
-      sonarCloudProjectKey: ${{ parameters.sonarCloudProjectKey }}
-      sonarCloudProjectName: ${{ parameters.sonarCloudProjectName }}
-      sonarCloudPublish: ${{ parameters.sonarCloudPublish }}  
-      ${{ if parameters.sonarCloudProperties }}:
-        sonarCloudProperties: ${{ parameters.sonarCloudProperties }}
       dotNetSdkVersion: ${{ parameters.dotNetSdkVersion }}  
   - template: ../stages/solution-checker-stage.yml
     parameters:
