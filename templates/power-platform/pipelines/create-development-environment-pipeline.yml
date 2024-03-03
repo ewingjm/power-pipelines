@@ -79,6 +79,7 @@ stages:
       location: ${{ parameters.location }}
       language: ${{ parameters.language }}
       currency: ${{ parameters.currency }}
+      # TODO: support `sku: Developer`
       postCreateJobs:
         - job: SetWorkItemHyperlink
           displayName: Set work item hyperlink
@@ -206,3 +207,4 @@ stages:
         BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
         BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
       jobs: ${{ parameters.finaliseEnvironmentJobs }}
+      # TODO: add timeline comments

@@ -60,7 +60,6 @@ stages:
       dependsOn: ${{ parameters.dependsOn }}
     condition: ${{ parameters.condition }}
     jobs:
-      # TODO: implement environment reuse
       - template: ../jobs/create-environment-job.yml
         parameters:
           serviceConnection: ${{ parameters.serviceConnection }}

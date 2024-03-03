@@ -109,6 +109,7 @@ stages:
       serviceConnection: ${{ parameters.serviceConnection }}
       filesToAnalyse: ${{ parameters.filesToAnalyse }}
       artifact: package
+  # TODO: implement environment reuse
   - template: ../stages/create-environment-stage.yml
     parameters:
       condition: |
@@ -137,6 +138,8 @@ stages:
       location: ${{ parameters.location }}
       language: ${{ parameters.language }}
       currency: ${{ parameters.currency }}
+      # TODO: support `sku: Developer`
+      # TODO: add work item link and timeline comments
   - ${{ if gt(length(parameters.prepareEnvironmentJobs), 0) }}:
     - stage: PrepareEnvironment
       displayName: Prepare environment
@@ -179,6 +182,7 @@ stages:
         BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
         BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
       jobs: ${{ parameters.finaliseEnvironmentJobs }}
+      # TODO: add timeline comments
   - ${{ if gt(length(parameters.testJobs), 0) }}:
     - stage: Test
       displayName: Test
@@ -196,6 +200,7 @@ stages:
         BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
         BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
       jobs: ${{ parameters.testJobs }}
+      # TODO: add timeline comments
   - template: ../stages/wait-for-manual-validation-stage.yml
     parameters:
       ${{ if gt(length(parameters.testJobs), 0) }}:
@@ -212,6 +217,7 @@ stages:
         - ${{ if gt(length(parameters.testJobs), 0) }}:
           - Test
       url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+      # TODO: add timeline comments
   - template: ../stages/delete-environment-stage.yml
     parameters:
       condition: not(eq(dependencies.CreateEnvironment.outputs['CreateEnvironment.PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'], ''))
@@ -220,3 +226,4 @@ stages:
         - ManualValidation
       serviceConnection: ${{ parameters.serviceConnection }}
       url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+      # TODO: add timeline comments
