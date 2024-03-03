@@ -36,6 +36,7 @@ jobs:
         fetchDepth: 0
       - template: ../steps/analyse-git-solution-updates-steps.yml
         parameters:
+          targetBranch: $(System.PullRequest.TargetBranchName)
           solutionSourcePattern: ${{ parameters.solutionSourcePattern }}
           webResourceSourcePatterns: ${{ parameters.webResourceSourcePatterns }}
           assemblySourcePatterns: ${{ parameters.assemblySourcePatterns }}
@@ -43,6 +44,7 @@ jobs:
       - ${{ each pattern in parameters.additionalPatterns }}:
         - template: ../steps/analyse-git-updates-steps.yml
           parameters:
+            targetBranch: $(System.PullRequest.TargetBranchName)
             filePatterns: ${{ pattern.filePatterns }}
             stepName: ${{ pattern.stepName }}
             stepDisplayName: ${{ pattern.stepDisplayName }}
