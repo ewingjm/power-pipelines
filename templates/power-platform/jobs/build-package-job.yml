@@ -17,32 +17,6 @@ parameters:
     displayName: Unmanaged solution
     type: string
     default: ''
-  - name: sonarCloudServiceConnection
-    displayName: SonarCloud service connection
-    type: string
-    default: ''
-  - name: sonarCloudOrganisation
-    displayName: SonarCloud organisation
-    type: string
-    default: ''
-  - name: sonarCloudProjectKey
-    displayName: SonarCloud project key
-    type: string
-    default: $(Build.Repository.Name)
-  - name: sonarCloudProjectName
-    displayName: SonarCloud project name
-    type: string
-    default: $(Build.Repository.Name)
-  - name: sonarCloudProperties
-    displayName: SonarCloud properties
-    type: string
-    default: |
-      sonar.cs.opencover.reportsPaths=$(Agent.TempDirectory)/**/coverage.opencover.xml
-      sonar.inclusions=src/**/*.*
-  - name: sonarCloudPublish
-    displayName: SonarCloud publish
-    type: boolean
-    default: true
   - name: dotNetSdkVersion
     displayName: .NET SDK version
     type: string
@@ -66,10 +40,6 @@ jobs:
         BuildPackage.UnitTests.Project: ${{ parameters.unitTestsProject }}
       ${{ if parameters.unmanagedSolution }}:
         BuildPackage.UnmanagedSolution: ${{ parameters.unmanagedSolution }}
-      ${{ if parameters.sonarCloudServiceConnection }}:
-        BuildPackage.SonarCloud.ProjectKey: ${{ parameters.sonarCloudProjectKey }}
-        BuildPackage.SonarCloud.ProjectName: ${{ parameters.sonarCloudProjectName }}
-        BuildPackage.SonarCloud.Organisation: ${{ parameters.sonarCloudOrganisation }}
       BuildPackage.DotNetSdk.Version: ${{ parameters.dotNetSdkVersion }}
     ${{ if parameters.dependsOn }}:
       dependsOn: ${{ parameters.dependsOn }}
@@ -89,15 +59,6 @@ jobs:
         displayName: Install .NET SDK $(BuildPackage.DotNetSdk.Version)
         inputs:
           version: $(BuildPackage.DotNetSdk.Version)
-      - ${{ if parameters.sonarCloudServiceConnection }}:
-        - task: SonarCloudPrepare@1
-          displayName: Prepare SonarCloud analysis
-          inputs:
-            SonarCloud: ${{ parameters.sonarCloudServiceConnection }}
-            organization: $(BuildPackage.SonarCloud.Organisation)
-            projectKey: $(BuildPackage.SonarCloud.ProjectKey)
-            projectName: $(BuildPackage.SonarCloud.ProjectName)
-            extraProperties: ${{ parameters.sonarCloudProperties }}
       - task: DotNetCoreCLI@2
         displayName: Build package
         inputs:
@@ -164,10 +125,4 @@ jobs:
         name: GetShortCommitHash
       - publish: $(BuildPackage.OutputDirectory)
         artifact: ${{ parameters.artifactName }}
-        displayName: Publish package 
-      - ${{ if parameters.sonarCloudServiceConnection }}:
-        - task: SonarCloudAnalyze@1
-          displayName: Run SonarCloud analysis
-        - task: SonarCloudPublish@1
-          displayName: Publish SonarCloud result
-          enabled: ${{ parameters.sonarCloudPublish }}
+        displayName: Publish package
