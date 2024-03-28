@@ -1,0 +1,42 @@
+parameters:
+  - name: pullRequestId
+    displayName: Pull request ID
+    type: string
+  - name: comment
+    displayName: comment
+    type: string
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Add pull request work item comment(s)
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+steps:
+  - powershell: |
+      Write-Host "Adding pull request work item comment(s)."
+      Write-Host "`tPull request ID: $env:ADDCOMMENT_PULLREQUESTID"
+      Write-Host "`tComment: $env:ADDCOMMENT_COMMENT"
+      
+      az devops configure --defaults organization=$(System.TeamFoundationCollectionUri) project=$(System.TeamProject)
+      
+      $workItems = az repos pr work-item list --id $env:ADDCOMMENT_PULLREQUESTID --query [*].id | ConvertFrom-Json
+
+      if ($workItems.Length -eq 0) {
+        Write-Host "No work items found."
+        return
+      }
+
+      $workItems | ForEach-Object {
+        az boards work-item update --id $_ --discussion $env:ADDCOMMENT_COMMENT | Out-Null
+      }
+      
+      Write-Host "Work item comment added successfully."      
+    displayName: ${{ parameters.stepDisplayName }}
+    condition: ${{ parameters.condition }}
+    env:
+      AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
+      ADDCOMMENT_PULLREQUESTID: ${{ parameters.pullRequestId }}
+      ADDCOMMENT_COMMENT: ${{ parameters.comment }}
