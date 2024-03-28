@@ -39,6 +39,10 @@ parameters:
     displayName: Optional post-deployment jobs
     type: jobList
     default: []
+  - name: env
+    displayName: Deployment environment variables
+    type: object
+    default: []
   - name: condition
     displayName: Condition
     type: string
@@ -51,6 +55,10 @@ parameters:
     displayName: Depends on
     type: object
     default: []
+  - name: variables
+    displayName: Stage variables
+    type: object
+    default: []
 
 stages:
   - stage: ${{ parameters.stageName }}
@@ -58,6 +66,7 @@ stages:
     ${{ if gt(length(parameters.dependsOn), 0) }}:      
       dependsOn: ${{ parameters.dependsOn }}
     condition: ${{ parameters.condition }}
+    variables: ${{ parameters.variables }}
     jobs:
       - template: ../jobs/deploy-package-job.yml
         parameters:
@@ -70,6 +79,7 @@ stages:
           timeoutInMinutes: ${{ parameters.timeoutInMinutes }}
           preDeploymentSteps: ${{ parameters.preDeploymentSteps }}
           postDeploymentSteps: ${{ parameters.postDeploymentSteps }}
+          env: ${{ parameters.env }}
           ${{ if parameters.config }}:
             config: ${{ parameters.config }}
       - ${{ each job in parameters.postDeploymentJobs }}:

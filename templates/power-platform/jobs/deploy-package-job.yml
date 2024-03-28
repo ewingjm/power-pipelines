@@ -27,6 +27,10 @@ parameters:
     displayName: Post-deployment steps
     type: stepList
     default: []
+  - name: env
+    displayName: Optional environment variables
+    type: object
+    default: []
   - name: config
     displayName: Package Deployer config file
     type: string
@@ -92,5 +96,7 @@ jobs:
                 authenticationType: PowerPlatformSPN
                 PowerPlatformSPN: ${{ parameters.serviceConnection }}
                 PackageFile: $(DeployPackage.PackageFile)
+              ${{ if gt(length(parameters.env), 0) }}:
+                env: ${{ parameters.env }}
             - ${{ if gt(length(parameters.postDeploymentSteps), 0) }}:
               - ${{ parameters.postDeploymentSteps }}
