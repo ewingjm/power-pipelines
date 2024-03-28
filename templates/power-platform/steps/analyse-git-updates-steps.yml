@@ -1,7 +1,4 @@
 parameters:
-  - name: targetBranch
-    displayName: Target branch
-    type: string
   - name: filePatterns
     displayName: File patterns
     type: object
@@ -22,7 +19,7 @@ steps:
   - powershell: |
       $repositoryRoot = git rev-parse --show-toplevel
       
-      $updatedFiles = git diff --name-only "HEAD..origin/$env:GETISUPDATED_TARGETBRANCH" | ForEach-Object { "$repositoryRoot/$_" }
+      $updatedFiles = git diff --name-only HEAD..origin/master | ForEach-Object { "$repositoryRoot/$_" }
       Write-Host "The following files have been updated:`n"
       $updatedFiles | ForEach-Object { Write-Host " - $_" }
       
@@ -50,5 +47,4 @@ steps:
     name: ${{ parameters.stepName }}
     workingDirectory: ${{ parameters.repository }}
     env:
-      GETISUPDATED_TARGETBRANCH: ${{ parameters.targetBranch }}
       GETISUPDATED_PATTERNS: ${{ join(',', parameters.filePatterns) }}  
