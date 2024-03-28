@@ -21,6 +21,10 @@ parameters:
     displayName: Security group ID
     type: string
     default: ''
+  - name: preDeploymentSteps
+    displayName: Optional pre-deployment steps
+    type: stepList
+    default: []
   - name: prepareEnvironmentJobs
     displayName: Optional pre-deployment jobs
     type: jobList
@@ -28,6 +32,10 @@ parameters:
   - name: finaliseEnvironmentJobs
     displayName: Optional post-deployment jobs
     type: jobList
+    default: []
+  - name: env
+    displayName: Deployment environment variables
+    type: object
     default: []
   - name: templates
     displayName: Templates
@@ -79,7 +87,6 @@ stages:
       location: ${{ parameters.location }}
       language: ${{ parameters.language }}
       currency: ${{ parameters.currency }}
-      # TODO: support `sku: Developer`
       postCreateJobs:
         - job: SetWorkItemHyperlink
           displayName: Set work item hyperlink
@@ -175,8 +182,13 @@ stages:
       packageArtifact: package
       packageFile: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetPackageFile.PackageFile'] ]
       url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+      variables:
+        - name: BuildTools.EnvironmentId
+          value: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
       ${{ if parameters.config }}:
         config: ${{ parameters.config }}
+      env: ${{ parameters.env }}
+      preDeploymentSteps: ${{ parameters.preDeploymentSteps }}
       postDeploymentJobs:
         - job: AddWorkItemComment
           displayName: Add work item comment
@@ -207,4 +219,3 @@ stages:
         BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
         BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
       jobs: ${{ parameters.finaliseEnvironmentJobs }}
-      # TODO: add timeline comments

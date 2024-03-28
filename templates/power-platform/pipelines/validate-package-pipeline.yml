@@ -77,6 +77,46 @@ parameters:
     displayName: Optional test jobs
     type: jobList
     default: []
+  - name: fallbackTestEnvironmentUrl
+    displayName: Optional fallback test environment URL
+    type: string
+    default: ''
+  - name: preDeploymentSteps
+    displayName: Optional pre-deployment steps
+    type: stepList
+    default: []
+  - name: postDeploymentSteps
+    displayName: Optional post-deployment steps
+    type: stepList
+    default: []
+  - name: env
+    displayName: Deployment environment variables
+    type: object
+    default: []
+  - name: sonarCloudServiceConnection
+    displayName: SonarCloud service connection
+    type: string
+    default: ''
+  - name: sonarCloudOrganisation
+    displayName: SonarCloud organisation
+    type: string
+    default: ''
+  - name: sonarCloudProjectKey
+    displayName: SonarCloud project key
+    type: string
+    default: $(Build.Repository.Name)
+  - name: sonarCloudProjectName
+    displayName: SonarCloud project name
+    type: string
+    default: $(Build.Repository.Name)
+  - name: sonarCloudPublish
+    displayName: SonarCloud publish
+    type: boolean
+    default: true
+  - name: sonarCloudProperties
+    displayName: SonarCloud properties
+    type: string
+    default: ''
   - name: dotNetSdkVersion
     displayName: .NET SDK version
     type: string
@@ -88,6 +128,13 @@ stages:
       packageProject: ${{ parameters.packageProject }}
       unitTestsProject: ${{ parameters.unitTestsProject }}
       additionalProjects: ${{ parameters.additionalProjects }}
+      sonarCloudServiceConnection: ${{ parameters.sonarCloudServiceConnection }}
+      sonarCloudOrganisation: ${{ parameters.sonarCloudOrganisation }}
+      sonarCloudProjectKey: ${{ parameters.sonarCloudProjectKey }}
+      sonarCloudProjectName: ${{ parameters.sonarCloudProjectName }}
+      sonarCloudPublish: ${{ parameters.sonarCloudPublish }}
+      ${{ if parameters.sonarCloudProperties }}:
+        sonarCloudProperties: ${{ parameters.sonarCloudProperties }}
       dotNetSdkVersion: ${{ parameters.dotNetSdkVersion }}  
   - template: ../stages/analyse-updates-stage.yml
     parameters:
@@ -109,7 +156,6 @@ stages:
       serviceConnection: ${{ parameters.serviceConnection }}
       filesToAnalyse: ${{ parameters.filesToAnalyse }}
       artifact: package
-  # TODO: implement environment reuse
   - template: ../stages/create-environment-stage.yml
     parameters:
       condition: |
@@ -119,8 +165,8 @@ stages:
           in(dependencies.BuildPackage.result, 'Succeeded', 'SucceededWithIssues'),
           in(dependencies.SolutionChecker.result, 'Succeeded', 'SucceededWithIssues', 'Skipped'),
           or(
-            dependencies.AnalyseUpdates.outputs['AnalyseUpdates.GetSolutionUpdates.Solution.IsUpdated'], 
-            dependencies.AnalyseUpdates.outputs['AnalyseUpdates.GetPackageTemplateUpdated.IsUpdated']
+            eq(dependencies.AnalyseUpdates.outputs['AnalyseUpdates.GetSolutionUpdates.Solution.IsUpdated'], 'True'), 
+            eq(dependencies.AnalyseUpdates.outputs['AnalyseUpdates.GetPackageTemplateUpdated.IsUpdated'], 'True')
           )
         )
       dependsOn:
@@ -138,8 +184,37 @@ stages:
       location: ${{ parameters.location }}
       language: ${{ parameters.language }}
       currency: ${{ parameters.currency }}
-      # TODO: support `sku: Developer`
-      # TODO: add work item link and timeline comments
+      postCreateJobs:
+        - job: SetWorkItemHyperlink
+          displayName: Set work item hyperlink
+          variables:
+            SetWorkItemHyperlink.Url: $[ dependencies.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+            SetWorkItemHyperlink.EnvironmentId: $[ dependencies.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+            SetWorkItemHyperlink.CommitHash: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetShortCommitHash.CommitHash'] ]
+          steps:
+            - checkout: none
+            - template: ../../../azure/devops/steps/serialise-to-json-steps.yml
+              parameters:
+                stepDisplayName: Get work item hyperlink metadata
+                object: 
+                  environment: validation
+                  pullRequest: $(System.PullRequest.PullRequestId)
+                  pipeline: $(Build.DefinitionName)
+                  runId: $(Build.BuildId)
+                  repo: $(Build.Repository.Name)
+                  repoId: $(Build.Repository.ID)
+                  environmentId: $(SetWorkItemHyperlink.EnvironmentId)
+                variable: SetWorkItemHyperlink.HyperlinkMetadata
+            - template: ../../../azure/devops/steps/add-pull-request-work-item-hyperlink-steps.yml
+              parameters:
+                pullRequestId: $(System.PullRequest.PullRequestId)
+                url: $(SetWorkItemHyperlink.Url)
+                comment: $(SetWorkItemHyperlink.HyperlinkMetadata)
+                historyComment: >
+                  <div>Created validation environment.</div>
+                  <div><br></div>
+                  <div><b>URL</b>: <a href="$(SetWorkItemHyperlink.Url)">$(SetWorkItemHyperlink.Url)</a></div>
+                  <div><b>Maker URL</b>: <a href="https://make.powerapps.com/environments/$(SetWorkItemHyperlink.EnvironmentId)">https://make.powerapps.com/environments/$(SetWorkItemHyperlink.EnvironmentId)</a></div>
   - ${{ if gt(length(parameters.prepareEnvironmentJobs), 0) }}:
     - stage: PrepareEnvironment
       displayName: Prepare environment
@@ -168,8 +243,32 @@ stages:
       packageArtifact: package
       packageFile: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetPackageFile.PackageFile'] ]
       url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+      variables:
+        - name: BuildTools.EnvironmentId
+          value: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
       ${{ if parameters.config }}:
         config: ${{ parameters.config }}
+      preDeploymentSteps: ${{ parameters.preDeploymentSteps }}
+      postDeploymentJobs:
+        - job: AddWorkItemComment
+          displayName: Add work item comment
+          variables:
+            AddWorkItemComment.Url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+            AddWorkItemComment.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+            AddWorkItemComment.CommitHash: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetShortCommitHash.CommitHash'] ]
+          steps:
+            - checkout: none
+            - template: ../../../azure/devops/steps/add-pull-request-work-item-comment-steps.yml
+              parameters:
+                pullRequestId: $(System.PullRequest.PullRequestId)
+                comment: >
+                  <div>Deployed to validation environment.</div>
+                  <div><br></div>
+                  <div><b>URL</b>: <a href="$(AddWorkItemComment.Url)">$(AddWorkItemComment.Url)</a></div>
+                  <div><b>Maker URL</b>: <a href="https://make.powerapps.com/environments/$(AddWorkItemComment.EnvironmentId)">https://make.powerapps.com/environments/$(AddWorkItemComment.EnvironmentId)</a></div>
+                  <div><b>Commit</b>: $(AddWorkItemComment.CommitHash)</div>
+      postDeploymentSteps: ${{ parameters.postDeploymentSteps }}
+      env: ${{ parameters.env }}  
   - ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
     - stage: FinaliseEnvironment
       displayName: Finalise environment
@@ -182,14 +281,33 @@ stages:
         BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
         BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
       jobs: ${{ parameters.finaliseEnvironmentJobs }}
-      # TODO: add timeline comments
   - ${{ if gt(length(parameters.testJobs), 0) }}:
     - stage: Test
       displayName: Test
       ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
-        condition: and(not(canceled()), in(dependencies.FinaliseEnvironment.result, 'Succeeded', 'SucceededWithIssues'))
+        condition: |
+          and(
+            not(canceled()),
+            or(
+              in(dependencies.FinaliseEnvironment.result, 'Succeeded', 'SucceededWithIssues'),
+              and(
+                eq(dependencies.FinaliseEnvironment.result, 'Skipped'), 
+                ne(variables['Test.FallbackEnvironment.Url'], '')
+              )
+            ) 
+          )
       ${{ if eq(length(parameters.finaliseEnvironmentJobs), 0) }}:
-        condition: and(not(canceled()), in(dependencies.DeployPackage.result, 'Succeeded', 'SucceededWithIssues'))
+        condition: |
+          and(
+            not(canceled()),
+            or(
+              in(dependencies.DeployPackage.result, 'Succeeded', 'SucceededWithIssues')
+              and(
+                eq(dependencies.DeployPackage.result, 'Skipped'), 
+                ne(variables['Test.FallbackEnvironment.Url'], '')
+              )
+            ) 
+          )
       dependsOn:
         - AnalyseUpdates
         - CreateEnvironment
@@ -197,10 +315,10 @@ stages:
         - ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
           - FinaliseEnvironment
       variables:
-        BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+        Test.FallbackEnvironment.Url: ${{ parameters.fallbackTestEnvironmentUrl }}
+        BuildTools.EnvironmentUrl: $[ coalesce(stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'], variables['Test.FallbackEnvironment.Url']) ]
         BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
       jobs: ${{ parameters.testJobs }}
-      # TODO: add timeline comments
   - template: ../stages/wait-for-manual-validation-stage.yml
     parameters:
       ${{ if gt(length(parameters.testJobs), 0) }}:
@@ -217,7 +335,6 @@ stages:
         - ${{ if gt(length(parameters.testJobs), 0) }}:
           - Test
       url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
-      # TODO: add timeline comments
   - template: ../stages/delete-environment-stage.yml
     parameters:
       condition: not(eq(dependencies.CreateEnvironment.outputs['CreateEnvironment.PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'], ''))
@@ -226,4 +343,3 @@ stages:
         - ManualValidation
       serviceConnection: ${{ parameters.serviceConnection }}
       url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
-      # TODO: add timeline comments
