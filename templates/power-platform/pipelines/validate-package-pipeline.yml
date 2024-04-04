@@ -184,7 +184,7 @@ stages:
                   repoId: $(Build.Repository.ID)
                   environmentId: $(SetWorkItemHyperlink.EnvironmentId)
                 variable: SetWorkItemHyperlink.HyperlinkMetadata
-            - template: ../../../azure/devops/steps/add-pull-request-work-item-hyperlink-steps.yml
+            - template: ../../azure-devops/steps/add-pull-request-work-item-hyperlink-steps.yml
               parameters:
                 pullRequestId: $(System.PullRequest.PullRequestId)
                 url: $(SetWorkItemHyperlink.Url)
@@ -237,7 +237,7 @@ stages:
             AddWorkItemComment.CommitHash: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetShortCommitHash.CommitHash'] ]
           steps:
             - checkout: none
-            - template: ../../../azure/devops/steps/add-pull-request-work-item-comment-steps.yml
+            - template: ../../azure-devops/steps/add-pull-request-work-item-comment-steps.yml
               parameters:
                 pullRequestId: $(System.PullRequest.PullRequestId)
                 comment: >
