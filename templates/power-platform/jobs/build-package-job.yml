@@ -67,7 +67,7 @@ jobs:
         displayName: Install .NET SDK $(BuildPackage.DotNetSdk.Version)
         inputs:
           version: $(BuildPackage.DotNetSdk.Version)
-      - ${{ preBuildSteps }}
+      - ${{ parameters.preBuildSteps }}
       - task: DotNetCoreCLI@2
         displayName: Build package
         inputs:
@@ -123,7 +123,7 @@ jobs:
               -c Debug
               -o "$(BuildPackage.SolutionOutputDirectory)"
               /p:SolutionVersionStrategy=none
-      - ${{ postBuildSteps }}
+      - ${{ parameters.postBuildSteps }}
       - powershell: |
           $fileName = [System.IO.Path]::GetFileNameWithoutExtension($env:BUILDPACKAGE_PACKAGEPROJECT)
           Write-Host "##vso[task.setvariable variable=PackageFile;isOutput=true]$fileName.dll"
