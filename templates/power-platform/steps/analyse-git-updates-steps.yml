@@ -1,4 +1,7 @@
 parameters:
+  - name: ref
+    displayName: Ref
+    type: string
   - name: filePatterns
     displayName: File patterns
     type: object
@@ -19,7 +22,13 @@ steps:
   - powershell: |
       $repositoryRoot = git rev-parse --show-toplevel
       
-      $updatedFiles = git diff --name-only HEAD..origin/master | ForEach-Object { "$repositoryRoot/$_" }
+      if ($env:GETISUPDATED_REF -match '^[0-9a-f]{40}$') {
+        $updatedFiles = git diff --name-only "HEAD..$env:GETISUPDATED_REF" | ForEach-Object { "$repositoryRoot/$_" }
+      }
+      else {
+        $updatedFiles = git diff --name-only "HEAD..origin/$env:GETISUPDATED_REF" | ForEach-Object { "$repositoryRoot/$_" }
+      }
+
       Write-Host "The following files have been updated:`n"
       $updatedFiles | ForEach-Object { Write-Host " - $_" }
       
@@ -47,4 +56,5 @@ steps:
     name: ${{ parameters.stepName }}
     workingDirectory: ${{ parameters.repository }}
     env:
+      GETISUPDATED_REF: ${{ parameters.ref }}
       GETISUPDATED_PATTERNS: ${{ join(',', parameters.filePatterns) }}  

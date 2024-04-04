@@ -1,4 +1,7 @@
 parameters:
+  - name: ref
+    displayName: Ref
+    type: string
   - name: solutionSourcePattern
     displayName: Solution source pattern
     type: string
@@ -61,8 +64,13 @@ steps:
       if ($AssemblySourcePatterns) {
         $backendPatterns += ($AssemblySourcePatterns | ForEach-Object { "$repositoryRoot/$_" })
       }
-
-      $updatedFiles = git diff --name-only HEAD..origin/master | ForEach-Object { "$repositoryRoot/$_" }
+      
+      if ($env:GETSOLUTIONUPDATES_REF -match '^[0-9a-f]{40}$') {
+        $updatedFiles = git diff --name-only "HEAD..$env:GETSOLUTIONUPDATES_REF" | ForEach-Object { "$repositoryRoot/$_" }
+      }
+      else {
+        $updatedFiles = git diff --name-only "HEAD..origin/$env:GETSOLUTIONUPDATES_REF" | ForEach-Object { "$repositoryRoot/$_" }
+      }
 
       Write-Host "The following files have been updated:`n"
       $updatedFiles | ForEach-Object { Write-Host " - $_" }
@@ -101,6 +109,7 @@ steps:
     name: GetSolutionUpdates
     workingDirectory: ${{ parameters.repository }}
     env:
+      GETSOLUTIONUPDATES_REF: ${{ parameters.ref }}
       GETSOLUTIONUPDATES_PATTERNS_SOLUTIONMETADATA: ${{ parameters.solutionSourcePattern }}
       GETSOLUTIONUPDATES_PATTERNS_WEBRESOURCES: ${{ join(',', parameters.webResourceSourcePatterns) }}
       GETSOLUTIONUPDATES_PATTERNS_ASSEMBLIES: ${{ join(',', parameters.assemblySourcePatterns) }}

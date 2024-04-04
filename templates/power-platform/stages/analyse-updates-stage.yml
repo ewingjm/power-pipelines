@@ -1,4 +1,8 @@
 parameters:
+  - name: ref
+    displayName: Ref
+    type: string
+    default: $(System.PullRequest.TargetBranchName)
   - name: solutionSourcePattern
     displayName: Solution source pattern
     type: string
@@ -40,6 +44,7 @@ stages:
     jobs:
       - template: ../jobs/analyse-updates-job.yml
         parameters:
+          ref: ${{ parameters.ref }}
           solutionSourcePattern: ${{ parameters.solutionSourcePattern }}
           webResourceSourcePatterns: ${{ parameters.webResourceSourcePatterns }}
           assemblySourcePatterns: ${{ parameters.assemblySourcePatterns }}

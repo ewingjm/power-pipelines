@@ -1,4 +1,7 @@
 parameters:
+  - name: ref
+    displayName: Ref
+    type: string
   - name: solutionSourcePattern
     displayName: Solution source pattern
     type: string
@@ -36,6 +39,7 @@ jobs:
         fetchDepth: 0
       - template: ../steps/analyse-git-solution-updates-steps.yml
         parameters:
+          ref: ${{ parameters.ref }}
           solutionSourcePattern: ${{ parameters.solutionSourcePattern }}
           webResourceSourcePatterns: ${{ parameters.webResourceSourcePatterns }}
           assemblySourcePatterns: ${{ parameters.assemblySourcePatterns }}
@@ -43,6 +47,7 @@ jobs:
       - ${{ each pattern in parameters.additionalPatterns }}:
         - template: ../steps/analyse-git-updates-steps.yml
           parameters:
+            ref: ${{ parameters.ref }}
             filePatterns: ${{ pattern.filePatterns }}
             stepName: ${{ pattern.stepName }}
             stepDisplayName: ${{ pattern.stepDisplayName }}
