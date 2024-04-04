@@ -280,7 +280,7 @@ stages:
           and(
             not(canceled()),
             or(
-              in(dependencies.DeployPackage.result, 'Succeeded', 'SucceededWithIssues')
+              in(dependencies.DeployPackage.result, 'Succeeded', 'SucceededWithIssues'),
               and(
                 eq(dependencies.DeployPackage.result, 'Skipped'), 
                 ne(variables['Test.FallbackEnvironment.Url'], '')
