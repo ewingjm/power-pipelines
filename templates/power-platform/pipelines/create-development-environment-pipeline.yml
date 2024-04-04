@@ -187,7 +187,7 @@ stages:
         - CreateEnvironment
         - ${{ if gt(length(parameters.prepareEnvironmentJobs), 0) }}:
           - PrepareEnvironment
-      environment: Ephemeral
+      environment: Power Platform - Ephemeral
       serviceConnection: ${{ parameters.serviceConnection }}
       packageArtifact: package
       packageFile: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetPackageFile.PackageFile'] ]
