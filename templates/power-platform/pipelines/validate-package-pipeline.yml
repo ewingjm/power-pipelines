@@ -172,7 +172,7 @@ stages:
             SetWorkItemHyperlink.CommitHash: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetShortCommitHash.CommitHash'] ]
           steps:
             - checkout: none
-            - template: ../../../azure/devops/steps/serialise-to-json-steps.yml
+            - template: ../../azure-devops/steps/serialise-to-json-steps.yml
               parameters:
                 stepDisplayName: Get work item hyperlink metadata
                 object: 
