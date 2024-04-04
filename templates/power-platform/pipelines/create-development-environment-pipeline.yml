@@ -61,6 +61,14 @@ parameters:
     displayName: Branch
     type: string
     default: ''
+  - name: preBuildSteps
+    displayName: Pre-build steps
+    type: stepList
+    default: []
+  - name: postBuildSteps
+    displayName: Post-build steps
+    type: stepList
+    default: []
   - name: dotNetSdkVersion
     displayName: .NET SDK version
     type: string
@@ -71,6 +79,8 @@ stages:
     parameters:
       packageProject: ${{ parameters.packageProject }}
       unmanagedSolution: ${{ parameters.solution }}
+      preBuildSteps: ${{ parameters.preBuildSteps }} 
+      postBuildSteps: ${{ parameters.postBuildSteps }}
       dotNetSdkVersion: ${{ parameters.dotNetSdkVersion }}
   - template: ../stages/create-environment-stage.yml
     parameters:

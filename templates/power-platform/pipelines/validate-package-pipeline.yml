@@ -93,6 +93,14 @@ parameters:
     displayName: Deployment environment variables
     type: object
     default: []
+  - name: preBuildSteps
+    displayName: Pre-build steps
+    type: stepList
+    default: []
+  - name: postBuildSteps
+    displayName: Post-build steps
+    type: stepList
+    default: []
   - name: dotNetSdkVersion
     displayName: .NET SDK version
     type: string
@@ -104,6 +112,8 @@ stages:
       packageProject: ${{ parameters.packageProject }}
       unitTestsProject: ${{ parameters.unitTestsProject }}
       additionalProjects: ${{ parameters.additionalProjects }}
+      preBuildSteps: ${{ parameters.preBuildSteps }} 
+      postBuildSteps: ${{ parameters.postBuildSteps }}
       dotNetSdkVersion: ${{ parameters.dotNetSdkVersion }}  
   - template: ../stages/analyse-updates-stage.yml
     parameters:

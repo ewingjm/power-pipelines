@@ -17,6 +17,14 @@ parameters:
     displayName: Unmanaged solution
     type: string
     default: ''
+  - name: preBuildSteps
+    displayName: Pre-build steps
+    type: stepList
+    default: []
+  - name: postBuildSteps
+    displayName: Post-build steps
+    type: stepList
+    default: []
   - name: dotNetSdkVersion
     displayName: .NET SDK version
     type: string
@@ -59,6 +67,7 @@ jobs:
         displayName: Install .NET SDK $(BuildPackage.DotNetSdk.Version)
         inputs:
           version: $(BuildPackage.DotNetSdk.Version)
+      - ${{ preBuildSteps }}
       - task: DotNetCoreCLI@2
         displayName: Build package
         inputs:
@@ -114,6 +123,7 @@ jobs:
               -c Debug
               -o "$(BuildPackage.SolutionOutputDirectory)"
               /p:SolutionVersionStrategy=none
+      - ${{ postBuildSteps }}
       - powershell: |
           $fileName = [System.IO.Path]::GetFileNameWithoutExtension($env:BUILDPACKAGE_PACKAGEPROJECT)
           Write-Host "##vso[task.setvariable variable=PackageFile;isOutput=true]$fileName.dll"

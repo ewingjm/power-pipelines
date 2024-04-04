@@ -18,6 +18,14 @@ parameters:
     displayName: Artifact name
     type: string
     default: package
+  - name: preBuildSteps
+    displayName: Pre-build steps
+    type: stepList
+    default: []
+  - name: postBuildSteps
+    displayName: Post-build steps
+    type: stepList
+    default: []
   - name: dotNetSdkVersion
     displayName: .NET SDK version
     type: string
@@ -37,4 +45,6 @@ stages:
           additionalProjects: ${{ parameters.additionalProjects }}
           unmanagedSolution: ${{ parameters.unmanagedSolution }}
           artifactName: ${{ parameters.artifactName }}
+          preBuildSteps: ${{ parameters.preBuildSteps }}
+          postBuildSteps: ${{ parameters.postBuildSteps }}
           dotNetSdkVersion: ${{ parameters.dotNetSdkVersion }}  
