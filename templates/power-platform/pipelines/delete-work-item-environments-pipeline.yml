@@ -40,10 +40,8 @@ stages:
                     [PSObject] $Object2
                 )
 
-                if ($Object1 -is [string] -or $Object1 -is [int] -or $Object1 -is [double]) {
-                  if ($Object1 -ne $Object2){
-                      return $false
-                  }
+                if ($Object1 -isnot [PSObject] -or $Object2 -isnot [PSObject]) {
+                  return $Object1 -eq $Object2
                 }
 
                 $Object1Properties = $Object1 | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name
@@ -282,10 +280,8 @@ stages:
                       Write-Warning $deleteRelationResponse.StatusDescription
                       return
                   }
-                              
                   Write-Host "Deleted work item hyperlink for $($_.workItemId)."
               }
-                          
               Write-Host "Finished processing work items."
             displayName: Delete work item environments
             env:
