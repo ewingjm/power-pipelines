@@ -330,7 +330,7 @@ stages:
       ${{ if and(eq(length(parameters.testJobs), 0), gt(length(parameters.finaliseEnvironmentJobs), 0)) }}:
         condition: succeeded('FinaliseEnvironment')
       ${{ if and(eq(length(parameters.testJobs), 0), eq(length(parameters.finaliseEnvironmentJobs), 0)) }}:
-        condition: succeded('DeployPackage')
+        condition: succeeded('DeployPackage')
       dependsOn: 
         - CreateEnvironment
         - DeployPackage
