@@ -10,6 +10,10 @@ parameters:
     displayName: Manual confirmation
     type: boolean
     default: true
+  - name: postDeleteJobs
+    displayName: Post delete jobs
+    type: jobList
+    default: []
   - name: stageName
     displayName: Stage name
     type: string
@@ -34,3 +38,11 @@ stages:
           serviceConnection: ${{ parameters.serviceConnection }}
           url: ${{ parameters.url }}
           manualConfirmation: ${{ parameters.manualConfirmation }}
+      - ${{ each job in parameters.postDeleteJobs }}:
+        - ${{ each pair in job }}:          
+            ${{ if ne(pair.key, 'dependsOn') }}:
+              ${{ pair.key }}: ${{ pair.value }}
+          dependsOn:                        
+            - DeleteEnvironment
+            - ${{ if job.dependsOn }}:
+              - ${{ job.dependsOn }}

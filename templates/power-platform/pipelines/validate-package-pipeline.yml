@@ -347,3 +347,18 @@ stages:
         - ManualValidation
       serviceConnection: ${{ parameters.serviceConnection }}
       url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+      postDeleteJobs:
+        - job: DeleteWorkItemLinks
+          displayName: Delete work item links
+          dependsOn: DeleteEnvironment
+          variables:
+            DeleteWorkItemLinks.Url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+          steps:
+            - template: ../../azure-devops/steps/delete-pull-request-work-item-hyperlink-steps.yml
+              parameters:
+                pullRequestId: $(System.PullRequest.PullRequestId)
+                url: $(DeleteWorkItemLinks.Url)
+                historyComment: >
+                  <div>Deleted validation environment.</div>
+                  <div><br></div>
+                  <div><b>URL</b>: <a href="$(DeleteWorkItemLinks.Url)">$(DeleteWorkItemLinks.Url)</a></div>
