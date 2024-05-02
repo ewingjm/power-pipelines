@@ -25,29 +25,41 @@ parameters:
     displayName: Job name
     type: string
     default: AnalyseUpdates
+  - name: jobDisplayName
+    displayName: Job display name
+    type: string
+    default: Analyse updates
   - name: dependsOn
     displayName: Depends on
     type: object
     default: []
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
 
 jobs:
   - job: ${{ parameters.jobName }}
-    displayName: Analyse updates
+    displayName: ${{ parameters.jobDisplayName }}
     dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    variables:
+      AnalyseUpdates.Ref: ${{ parameters.ref }}
+      AnalyseUpdates.Repo: ${{ parameters.repository }}
     steps:
       - checkout: self
         fetchDepth: 0
       - template: ../steps/analyse-git-solution-updates-steps.yml
         parameters:
-          ref: ${{ parameters.ref }}
+          ref: $(AnalyseUpdates.Ref)
           solutionSourcePattern: ${{ parameters.solutionSourcePattern }}
           webResourceSourcePatterns: ${{ parameters.webResourceSourcePatterns }}
           assemblySourcePatterns: ${{ parameters.assemblySourcePatterns }}
-          repository: ${{ parameters.repository }}
+          repository: $(AnalyseUpdates.Repo)
       - ${{ each pattern in parameters.additionalPatterns }}:
         - template: ../steps/analyse-git-updates-steps.yml
           parameters:
-            ref: ${{ parameters.ref }}
+            ref: $(AnalyseUpdates.Ref)
             filePatterns: ${{ pattern.filePatterns }}
             stepName: ${{ pattern.stepName }}
             stepDisplayName: ${{ pattern.stepDisplayName }}

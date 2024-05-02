@@ -22,6 +22,10 @@ parameters:
     displayName: Repository
     type: string
     default: $(Build.SourcesDirectory)
+  - name: analyseEnvironmentUpdates
+    displayName: Analyse environment updates
+    type: boolean
+    default: false
   - name: condition
     displayName: Condition
     type: string
@@ -42,9 +46,33 @@ stages:
       dependsOn: ${{ parameters.dependsOn }}
     condition: ${{ parameters.condition }}
     jobs:
+      - ${{ if and(parameters.analyseEnvironmentUpdates, eq(variables['Build.Reason'], 'PullRequest'))  }}:
+        - job: FindExistingEnvironment
+          displayName: Find existing environment
+          steps:
+            - checkout: none
+            - template: ../../azure-devops/steps/find-pull-request-work-item-hyperlink-steps.yml
+              parameters:
+                metadataQuery: 
+                  pullRequestId: $(System.PullRequest.PullRequestId)
+        - template: ../jobs/analyse-updates-job.yml
+          parameters:
+            dependsOn:
+              - FindExistingEnvironment
+            condition: and(succeeded(), ne(dependencies.FindExistingEnvironment.outputs['FindWorkItemHyperlink.Relation.attributes.comment.commitHash'], ''))
+            ref: $[ dependencies.FindExistingEnvironment.outputs['FindWorkItemHyperlink.Relation.attributes.comment.commitHash'] ]
+            jobName: AnalyseEnvironmentUpdates
+            jobDisplayName: Analyse environment updates
+            solutionSourcePattern: ${{ parameters.solutionSourcePattern }}
+            webResourceSourcePatterns: ${{ parameters.webResourceSourcePatterns }}
+            assemblySourcePatterns: ${{ parameters.assemblySourcePatterns }}
+            additionalPatterns: ${{ parameters.additionalPatterns }}
+            repository: ${{ parameters.repository }}
       - template: ../jobs/analyse-updates-job.yml
         parameters:
           ref: ${{ parameters.ref }}
+          jobName: AnalyseUpdates
+          jobDisplayName: Analyse updates
           solutionSourcePattern: ${{ parameters.solutionSourcePattern }}
           webResourceSourcePatterns: ${{ parameters.webResourceSourcePatterns }}
           assemblySourcePatterns: ${{ parameters.assemblySourcePatterns }}

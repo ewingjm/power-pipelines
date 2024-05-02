@@ -130,7 +130,11 @@ jobs:
         displayName: Get package file
         name: GetPackageFile
       - powershell: |
-          Write-Host "##vso[task.setvariable variable=CommitHash;isOutput=true]$($env:BUILD_SOURCEVERSION.Substring(0, 7))"
+          if ($env:BUILD_REASON -eq "PullRequest") {
+            Write-Host "##vso[task.setvariable variable=CommitHash;isOutput=true]$($env:SYSTEM_PULLREQUEST_SOURCECOMMITID.Substring(0, 7))"
+          } else {
+            Write-Host "##vso[task.setvariable variable=CommitHash;isOutput=true]$($env:BUILD_SOURCEVERSION.Substring(0, 7))"
+          }
         displayName: Get short commit hash
         name: GetShortCommitHash
       - publish: $(BuildPackage.OutputDirectory)

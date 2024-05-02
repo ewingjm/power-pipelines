@@ -22,10 +22,12 @@ steps:
   - powershell: |
       $repositoryRoot = git rev-parse --show-toplevel
       
-      if ($env:GETISUPDATED_REF -match '^[0-9a-f]{40}$') {
+      if ($env:GETISUPDATED_REF -match '^[0-9a-f]{7}$') {
+        Write-Host "Comparing HEAD with $env:GETISUPDATED_REF."
         $updatedFiles = git diff --name-only "HEAD..$env:GETISUPDATED_REF" | ForEach-Object { "$repositoryRoot/$_" }
       }
       else {
+        Write-Host "Comparing HEAD with origin/$env:GETISUPDATED_REF."
         $updatedFiles = git diff --name-only "HEAD..origin/$env:GETISUPDATED_REF" | ForEach-Object { "$repositoryRoot/$_" }
       }
 

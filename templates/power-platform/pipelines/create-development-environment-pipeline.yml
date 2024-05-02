@@ -112,11 +112,9 @@ stages:
                 object: 
                   environment: development
                   solutionName: ${{ parameters.solution }}
-                  pipeline: $(Build.DefinitionName)
                   runId: $(Build.BuildId)
-                  repo: $(Build.Repository.Name)
                   repoId: $(Build.Repository.ID)
-                  environmentId: $(SetWorkItemHyperlink.EnvironmentId)
+                  commitHash: $(SetWorkItemHyperlink.CommitHash)
                 variable: SetWorkItemHyperlink.HyperlinkMetadata
             - template: ../../azure-devops/steps/add-work-item-hyperlink-steps.yml
               parameters:

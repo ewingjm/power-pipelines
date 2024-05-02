@@ -40,8 +40,10 @@ stages:
                     [PSObject] $Object2
                 )
 
-                if ($Object1 -isnot [PSObject] -or $Object2 -isnot [PSObject]) {
-                    return $Object1 -eq $Object2
+                if ($Object1 -is [string] -or $Object1 -is [int] -or $Object1 -is [double]) {
+                  if ($Object1 -ne $Object2){
+                      return $false
+                  }
                 }
 
                 $Object1Properties = $Object1 | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name
@@ -109,7 +111,7 @@ stages:
               WHERE [System.HyperlinkCount] > 0 
               AND ($stateConditions)
               "@
-              
+                          
               Write-Host "Getting work items with the following query:"
               Write-Host $workItemQuery
 
@@ -164,32 +166,41 @@ stages:
                       $workItem = $_
                       [array]$hyperlinksWithComments = $_.relations | Where-Object { $_.rel -eq "Hyperlink" -and $_.attributes.comment -ne $null }
                       $hyperlinksWithComments | ForEach-Object {
+                          $relation = $_
+                          if (!$relation.attributes.comment) {
+                              Write-Host "No comment associated with $($relation.url) link."
+                              return
+                          }
+
                           try {
-                              $metadata = $_.attributes.comment | ConvertFrom-Json 
+                              $metadata = $relation.attributes.comment | ConvertFrom-Json 
                           }
                           catch [System.ArgumentException] {
-                              # Silently Continue 
+                              Write-Host "Comment associated with $($relation.url) link does not contain valid metadata."
+                              return
                           }
 
                           if (-not(Test-ObjectSubset -Object1 $metadataQuery -Object2 $metadata)) {
-                              Write-Host "`t - Work item $($workItem.id) link to $($_.url) did not match metadata query."
+                              Write-Host "`t - Work item $($workItem.id) link to $($relation.url) did not match metadata query."
                               return
                           }
 
-                          if ($_.url -notmatch ".*\.crm\d+\.dynamics\.com") {
-                              Write-Host "`t - Work item $($workItem.id) link to $($_.url) did not contain a valid URL."
+                          if ($relation.url -notmatch ".*\.crm\d+\.dynamics\.com") {
+                              Write-Host "`t - Work item $($workItem.id) link to $($relation.url) did not contain a valid URL."
                               return
                           }
 
-                          Write-Host "`t - URL $($_.url) for work item $($workItem.id) matched metadata query."
+                          Write-Host "`t - URL $($relation.url) for work item $($workItem.id) matched metadata query."
                           $environmentsToDelete.Add(@{
                                   workItemId = $workItem.id
-                                  url        = $_.url
-                                  linkIndex  = $workItem.relations.IndexOf($_)
+                                  url        = $relation.url
+                                  linkIndex  = $workItem.relations.IndexOf($relation)
                               }) | Out-Null
                       }
                   }
               }
+
+              $environmentsToDelete = $environmentsToDelete | Sort-Object -Property workItemId, linkIndex -Descending
 
               if ($environmentsToDelete.Count -eq 0) {
                   Write-Host "No environments found to delete."
@@ -238,7 +249,7 @@ stages:
                       catch {
                           Write-Warning "Failed to delete $($matchingEnvironment.DisplayName)."
                           Write-Warning $_
-                          continue
+                          return
                       }
                   }
 
@@ -269,12 +280,12 @@ stages:
                   $deleteRelationResponse = Invoke-WebRequest @deleteRelationParameters
                   if ($deleteRelationResponse.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
                       Write-Warning $deleteRelationResponse.StatusDescription
-                      continue
+                      return
                   }
-                  
+                              
                   Write-Host "Deleted work item hyperlink for $($_.workItemId)."
               }
-              
+                          
               Write-Host "Finished processing work items."
             displayName: Delete work item environments
             env:
