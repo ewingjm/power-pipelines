@@ -45,8 +45,8 @@ steps:
       $workItems | ForEach-Object {
         $workItemId = $_
         $workItem = az boards work-item show --id $workItemId --expand relations | ConvertFrom-Json 
-        $relationsToDelete = $workItem.relations | Where-Object { [System.Uri]::new($_.url) -eq $searchUri }
-        [array]::Reverse($relationsToDelete)
+        $relationsToDelete = [System.Collections.ArrayList]($workItem.relations | Where-Object { [System.Uri]::new($_.url) -eq $searchUri })
+        $relationsToDelete.Reverse()
         
         $relationsToDelete | ForEach-Object {
           $patchDocument = [System.Collections.ArrayList]@(
