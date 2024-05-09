@@ -1,0 +1,40 @@
+parameters:
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: securityGroupId
+    displayName: Security group ID
+    type: string
+  - name: teamName
+    displayName: Team name
+    type: string
+  - name: roleName
+    displayName: Role name
+    type: string
+  - name: jobName
+    displayName: Job name
+    type: string
+    default: AssignAccessToGroup
+  - name: jobDisplayName
+    displayName: Job display name
+    type: string
+    default: Assign access to group
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: ${{ parameters.jobDisplayName }}
+    variables:
+      AssignAccess.SecurityGroupId: ${{ parameters.securityGroupId }}
+      AssignAccess.TeamName: ${{ parameters.teamName }}
+      AssignAccess.RoleName: ${{ parameters.roleName }}
+    steps:
+      - task: PowerPlatformAssignGroup@2
+        displayName: Assign Developers group
+        inputs:
+          authenticationType: PowerPlatformSPN
+          PowerPlatformSPN: ${{ parameters.serviceConnection }}
+          GroupName: $(AssignAccess.TeamName)
+          Group: $(AssignAccess.SecurityGroupId)
+          Role: $(AssignAccess.RoleName)
+          TeamType: AadSecurityGroup
+          MembershipType: MembersAndGuests

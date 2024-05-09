@@ -20,7 +20,6 @@ parameters:
   - name: securityGroupId
     displayName: Security group ID
     type: string
-    default: ''
   - name: preDeploymentSteps
     displayName: Optional pre-deployment steps
     type: stepList
@@ -170,14 +169,20 @@ stages:
                     <div><b>Name</b>: $(CreateBranch.Branch)</div>
                     <div><b>Based on commit</b>: $(CreateBranch.CommitHash)</div>
                   condition: and(succeeded(), eq(variables['CheckBranchExists.Exists'], 'false'))
-  - ${{ if gt(length(parameters.prepareEnvironmentJobs), 0) }}:
-    - stage: PrepareEnvironment
-      displayName: Prepare environment
-      dependsOn: CreateEnvironment
-      variables:
-        BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
-        BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
-      jobs: ${{ parameters.prepareEnvironmentJobs }}
+  - stage: PrepareEnvironment
+    displayName: Prepare environment
+    dependsOn: CreateEnvironment
+    variables:
+      BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+      BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+    jobs: 
+      - template: ../jobs/assign-group-access-job.yml
+        parameters:
+          serviceConnection: ${{ parameters.serviceConnection }}
+          securityGroupId: ${{ parameters.securityGroupId }}
+          teamName: Developers
+          roleName: System Administrator
+      - ${{ parameters.prepareEnvironmentJobs }}
   - template: ../stages/deploy-package-stage.yml
     parameters:
       dependsOn: 
