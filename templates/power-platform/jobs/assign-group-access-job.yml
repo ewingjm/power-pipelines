@@ -28,6 +28,11 @@ jobs:
       AssignAccess.TeamName: ${{ parameters.teamName }}
       AssignAccess.RoleName: ${{ parameters.roleName }}
     steps:
+      - checkout: none
+      - task: PowerPlatformToolInstaller@0
+        displayName: Install Power Platform Build Tools
+        inputs:
+          DefaultVersion: true
       - task: PowerPlatformAssignGroup@2
         displayName: Assign Developers group
         inputs:
