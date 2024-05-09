@@ -355,6 +355,7 @@ stages:
           variables:
             DeleteWorkItemLinks.Url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
           steps:
+            - checkout: none
             - template: ../../azure-devops/steps/delete-pull-request-work-item-hyperlink-steps.yml
               parameters:
                 pullRequestId: $(System.PullRequest.PullRequestId)
