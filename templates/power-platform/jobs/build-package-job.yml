@@ -84,15 +84,14 @@ jobs:
           displayName: Run unit tests
           inputs:
             command: test
-            arguments: --collect:"XPlat Code Coverage"
+            arguments: --collect:"XPlat Code Coverage" --results-directory "$(Build.ArtifactStagingDirectory)/TestResults"
             publishTestResults: true
             projects: $(BuildPackage.UnitTests.Project)
-        - task: PublishCodeCoverageResults@1
+        - task: PublishCodeCoverageResults@2
           displayName: Publish code coverage report
           inputs:
-            codeCoverageTool: Cobertura
             failIfCoverageEmpty: false
-            summaryFileLocation: $(Agent.TempDirectory)/**/coverage.cobertura.xml
+            summaryFileLocation: $(Build.ArtifactStagingDirectory)/TestResults/**/coverage.cobertura.xml
       - ${{ each additionalProject in parameters.additionalProjects }}:
         - task: DotNetCoreCLI@2
           displayName: Build ${{ additionalProject.artifactName }}
