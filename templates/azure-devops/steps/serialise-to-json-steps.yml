@@ -1,0 +1,28 @@
+parameters:
+  - name: object
+    displayName: Object
+    type: object
+  - name: variable
+    displayName: Variable
+    type: string
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Serialise pipeline object to JSON
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+steps:
+  - powershell: |
+      Write-Host "Setting $env:SERIALISETOJSON_VARIABLE to the following JSON:"
+      Write-Host $env:SERIALISETOJSON_OBJECT
+      
+      $compressedJson = $env:SERIALISETOJSON_OBJECT | ConvertFrom-Json | ConvertTo-Json -Depth 100 -Compress 
+      Write-Host "##vso[task.setvariable variable=$env:SERIALISETOJSON_VARIABLE;]$compressedJson"
+    displayName: ${{ parameters.stepDisplayName }}
+    condition: ${{ parameters.condition }}
+    env:
+      SERIALISETOJSON_OBJECT: ${{ convertToJson(parameters.object) }}
+      SERIALISETOJSON_VARIABLE: ${{ parameters.variable }}

@@ -1,0 +1,45 @@
+parameters:
+  - name: tags
+    displayName: tags
+    type: object
+  - name: resources
+    displayName: Resources
+    type: object
+  - name: jobName
+    displayName: Job name
+    type: string
+    default: TagBuilds
+  - name: jobDisplayName
+    displayName: Job display name
+    type: string
+    default: Tag builds
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: ${{ parameters.jobDisplayName }}
+    dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    variables:
+      TagPipeline.Tags: ${{ convertToJson(parameters.tags) }}
+      TagPipeline.Resources: ${{ convertToJson(parameters.resources) }}
+    steps:
+    - powershell: az devops configure --defaults organization=$(System.TeamFoundationCollectionUri) project=$(System.TeamProject) --use-git-aliases true
+      displayName: Set az CLI default org and project
+    - powershell: |
+        $resources = $env:TAGPIPELINE_RESOURCES | ConvertFrom-Json
+        $tags = $env:TAGPIPELINE_TAGS | ConvertFrom-Json
+        $resources | ForEach-Object {
+          $runId = [System.Environment]::GetEnvironmentVariable("RESOURCES_PIPELINE_$($_)_RUNID")
+          az pipelines runs tag add --run-id $runId --tags ($tags -join ',')
+        }
+      displayName: Tag builds
+      env:
+        AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)

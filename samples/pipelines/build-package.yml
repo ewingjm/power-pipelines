@@ -1,0 +1,26 @@
+name: $(GITVERSION_FullSemVer)
+
+pool:
+  vmImage: windows-latest
+
+pr: none
+
+trigger:
+  batch: false
+  branches:
+    include:
+      - main
+
+resources:
+  repositories:
+    - repository: power-pipelines
+      name: ewingjm/power-pipelines
+      ref: refs/heads/main 
+      type: github
+      endpoint: your-service-endpoint
+
+extends:
+  template: templates/power-platform/pipelines/build-package-pipeline.yml@power-pipelines
+  parameters:
+    packageProject: deploy/Contoso.Sales.Deployment/Contoso.Sales.Deployment.csproj 
+    serviceConnection: Sales Management App

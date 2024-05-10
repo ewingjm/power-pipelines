@@ -1,0 +1,39 @@
+name: $(GITVERSION_FullSemVer)
+
+pool:
+  vmImage: windows-latest
+
+pr:
+  autoCancel: false
+
+trigger: none
+
+resources:
+  repositories:
+    - repository: power-pipelines
+      name: ewingjm/power-pipelines
+      ref: refs/heads/main 
+      type: github
+      endpoint: your-service-endpoint
+
+variables:
+  - group: Dynamics Environment Settings - Placeholder
+
+extends:
+  template: templates/power-platform/pipelines/validate-package-pipeline.yml@power-pipelines
+  parameters:
+    packageProject: deploy/Contoso.Sales.Deployment/Contoso.Sales.Deployment.csproj 
+    serviceConnection: Sales Management App
+    solutionSourcePattern: src/solutions/*/metadata
+    packageSourcePatterns:
+      - deploy/Contoso.Sales.Deployment/*
+    webResourceSourcePatterns: 
+      - src/webresources/*
+    assemblySourcePatterns:
+      - src/common/*
+      - src/plugins/*
+    displayNamePrefix: CONTOSO-SALES-DEV
+    domainNamePrefix: contoso-sales-dev
+    templates: D365_Sales
+    securityGroupId: 425bf098-07a0-46b4-a06a-706b302dbe7b
+    config: PkgAssets/ImportConfig.Ephemeral.xml

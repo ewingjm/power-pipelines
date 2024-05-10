@@ -1,0 +1,81 @@
+parameters:
+  - name: ref
+    displayName: Ref
+    type: string
+    default: $(System.PullRequest.TargetBranchName)
+  - name: solutionSourcePattern
+    displayName: Solution source pattern
+    type: string
+  - name: webResourceSourcePatterns
+    displayName: Web resource source patterns
+    type: object
+    default: []
+  - name: assemblySourcePatterns
+    displayName: Assembly source patterns
+    type: object
+    default: []
+  - name: additionalPatterns
+    displayName: Additional patterns  
+    type: object
+    default: []
+  - name: repository
+    displayName: Repository
+    type: string
+    default: $(Build.SourcesDirectory)
+  - name: analyseEnvironmentUpdates
+    displayName: Analyse environment updates
+    type: boolean
+    default: false
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+  - name: stageName
+    displayName: stageName
+    type: string
+    default: AnalyseUpdates
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: Analyse updates
+    ${{ if gt(length(parameters.dependsOn), 0) }}:      
+      dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    jobs:
+      - ${{ if and(parameters.analyseEnvironmentUpdates, eq(variables['Build.Reason'], 'PullRequest'))  }}:
+        - job: FindExistingEnvironment
+          displayName: Find existing environment
+          steps:
+            - checkout: none
+            - template: ../../azure-devops/steps/find-pull-request-work-item-hyperlink-steps.yml
+              parameters:
+                metadataQuery: 
+                  pullRequestId: $(System.PullRequest.PullRequestId)
+        - template: ../jobs/analyse-updates-job.yml
+          parameters:
+            dependsOn:
+              - FindExistingEnvironment
+            condition: and(succeeded(), ne(dependencies.FindExistingEnvironment.outputs['FindWorkItemHyperlink.Relation.attributes.comment.commitHash'], ''))
+            ref: $[ dependencies.FindExistingEnvironment.outputs['FindWorkItemHyperlink.Relation.attributes.comment.commitHash'] ]
+            jobName: AnalyseEnvironmentUpdates
+            jobDisplayName: Analyse environment updates
+            solutionSourcePattern: ${{ parameters.solutionSourcePattern }}
+            webResourceSourcePatterns: ${{ parameters.webResourceSourcePatterns }}
+            assemblySourcePatterns: ${{ parameters.assemblySourcePatterns }}
+            additionalPatterns: ${{ parameters.additionalPatterns }}
+            repository: ${{ parameters.repository }}
+      - template: ../jobs/analyse-updates-job.yml
+        parameters:
+          ref: ${{ parameters.ref }}
+          jobName: AnalyseUpdates
+          jobDisplayName: Analyse updates
+          solutionSourcePattern: ${{ parameters.solutionSourcePattern }}
+          webResourceSourcePatterns: ${{ parameters.webResourceSourcePatterns }}
+          assemblySourcePatterns: ${{ parameters.assemblySourcePatterns }}
+          additionalPatterns: ${{ parameters.additionalPatterns }}
+          repository: ${{ parameters.repository }}
+          

@@ -1,0 +1,32 @@
+parameters:
+  - name: workItemId
+    displayName: Work Item ID
+    type: string
+  - name: comment
+    displayName: comment
+    type: string
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Add work item comment
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+steps:
+  - powershell: |
+      Write-Host "Adding a work item comment."
+      Write-Host "`tWork item ID: $env:ADDCOMMENT_WORKITEMID"
+      Write-Host "`tComment: $env:ADDCOMMENT_COMMENT"
+      
+      az devops configure --defaults organization=$(System.TeamFoundationCollectionUri) project=$(System.TeamProject)
+      az boards work-item update --id $env:ADDCOMMENT_WORKITEMID --discussion $env:ADDCOMMENT_COMMENT | Out-Null
+      
+      Write-Host "Work item comment added successfully."      
+    displayName: ${{ parameters.stepDisplayName }}
+    condition: ${{ parameters.condition }}
+    env:
+      AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
+      ADDCOMMENT_WORKITEMID: ${{ parameters.workItemId }}
+      ADDCOMMENT_COMMENT: ${{ parameters.comment }}

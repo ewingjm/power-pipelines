@@ -1,0 +1,366 @@
+parameters:
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: packageProject
+    displayName: Package project
+    type: string
+  - name: displayNamePrefix
+    displayName: Display name prefix
+    type: string
+  - name: domainNamePrefix
+    displayName: Domain name prefix
+    type: string
+  - name: solutionSourcePattern
+    displayName: Solution source pattern
+    type: string
+  - name: packageSourcePatterns
+    displayName: Package Deployer template source patterns
+    type: object
+  - name: unitTestsProject
+    displayName: Unit tests project
+    type: string
+    default: ''
+  - name: securityGroupId
+    displayName: Security group ID
+    type: string
+  - name: additionalProjects
+    displayName: Additionals projects
+    type: object
+    default: []
+  - name: filesToAnalyse
+    displayName: Files to analyse (Solution Checker)
+    type: string
+    default: '**/*.zip'
+  - name: webResourceSourcePatterns
+    displayName: Web resource source patterns
+    type: object
+    default: []
+  - name: assemblySourcePatterns
+    displayName: Assembly source patterns
+    type: object
+    default: []
+  - name: additionalPatterns
+    displayName: Additional patterns  
+    type: object
+    default: []
+  - name: templates
+    displayName: Templates
+    type: string
+    default: ''
+  - name: location
+    displayName: Location
+    type: string
+    default: europe
+  - name: language
+    displayName: Language
+    type: string
+    default: English
+  - name: currency
+    displayName: Currency
+    type: string
+    default: GBP
+  - name: config
+    displayName: Package Deployer config file
+    type: string
+    default: ''
+  - name: prepareEnvironmentJobs
+    displayName: Optional pre-deployment jobs
+    type: jobList
+    default: []
+  - name: finaliseEnvironmentJobs
+    displayName: Optional post-deployment jobs
+    type: jobList
+    default: []
+  - name: testJobs
+    displayName: Optional test jobs
+    type: jobList
+    default: []
+  - name: fallbackTestEnvironmentUrl
+    displayName: Optional fallback test environment URL
+    type: string
+    default: ''
+  - name: preDeploymentSteps
+    displayName: Optional pre-deployment steps
+    type: stepList
+    default: []
+  - name: postDeploymentSteps
+    displayName: Optional post-deployment steps
+    type: stepList
+    default: []
+  - name: env
+    displayName: Deployment environment variables
+    type: object
+    default: []
+  - name: preBuildSteps
+    displayName: Pre-build steps
+    type: stepList
+    default: []
+  - name: postBuildSteps
+    displayName: Post-build steps
+    type: stepList
+    default: []
+  - name: dotNetSdkVersion
+    displayName: .NET SDK version
+    type: string
+    default: 6.x
+
+stages:
+  - template: ../stages/build-package-stage.yml
+    parameters:
+      packageProject: ${{ parameters.packageProject }}
+      unitTestsProject: ${{ parameters.unitTestsProject }}
+      additionalProjects: ${{ parameters.additionalProjects }}
+      preBuildSteps: ${{ parameters.preBuildSteps }} 
+      postBuildSteps: ${{ parameters.postBuildSteps }}
+      dotNetSdkVersion: ${{ parameters.dotNetSdkVersion }}  
+  - template: ../stages/analyse-updates-stage.yml
+    parameters: 
+      analyseEnvironmentUpdates: true
+      solutionSourcePattern: ${{ parameters.solutionSourcePattern }}
+      webResourceSourcePatterns: ${{ parameters.webResourceSourcePatterns }}
+      assemblySourcePatterns: ${{ parameters.assemblySourcePatterns }}
+      additionalPatterns: 
+        - filePatterns: ${{ parameters.packageSourcePatterns }}
+          stepName: GetPackageTemplateUpdated
+          stepDisplayName: Get package template updated
+        - ${{ each pattern in parameters.additionalPatterns }}:
+          - ${{ pattern }}
+  - template: ../stages/solution-checker-stage.yml
+    parameters:
+      condition: |
+        and(
+          succeeded(), 
+          or(
+            and(
+              eq(dependencies.AnalyseUpdates.outputs['FindExistingEnvironment.FindWorkItemHyperlink.Relation.attributes.comment.commitHash'], ''),
+              eq(dependencies.AnalyseUpdates.outputs['AnalyseUpdates.GetSolutionUpdates.Solution.IsUpdated'], 'true')
+            ),
+            and(
+              ne(dependencies.AnalyseUpdates.outputs['FindExistingEnvironment.FindWorkItemHyperlink.Relation.attributes.comment.commitHash'], ''),
+              eq(dependencies.AnalyseEnvironmentUpdates.outputs['AnalyseUpdates.GetSolutionUpdates.Solution.IsUpdated'], 'true')
+            )
+          )
+        )
+      dependsOn:
+        - BuildPackage
+        - AnalyseUpdates
+      serviceConnection: ${{ parameters.serviceConnection }}
+      filesToAnalyse: ${{ parameters.filesToAnalyse }}
+      artifact: package
+  - template: ../stages/create-environment-stage.yml
+    parameters:
+      condition: |
+        and(
+          not(canceled()),
+          succeeded('AnalyseUpdates'),
+          succeeded('BuildPackage'),
+          not(failed('SolutionChecker')),
+          or(
+            and(
+              eq(dependencies.AnalyseUpdates.outputs['FindExistingEnvironment.FindWorkItemHyperlink.Relation.attributes.comment.commitHash'], ''),
+              or(
+                eq(dependencies.AnalyseUpdates.outputs['AnalyseUpdates.GetSolutionUpdates.Solution.IsUpdated'], 'True'), 
+                eq(dependencies.AnalyseUpdates.outputs['AnalyseUpdates.GetPackageTemplateUpdated.IsUpdated'], 'True')
+              )
+            ),
+            and(
+              ne(dependencies.AnalyseUpdates.outputs['FindExistingEnvironment.FindWorkItemHyperlink.Relation.attributes.comment.commitHash'], ''),
+              or(
+                eq(dependencies.AnalyseEnvironmentUpdates.outputs['AnalyseUpdates.GetSolutionUpdates.Solution.IsUpdated'], 'True'), 
+                eq(dependencies.AnalyseEnvironmentUpdates.outputs['AnalyseUpdates.GetPackageTemplateUpdated.IsUpdated'], 'True')
+              )
+            )
+          )
+        )
+      dependsOn:
+        - BuildPackage
+        - SolutionChecker
+        - AnalyseUpdates
+      displayNamePrefix: ${{ parameters.displayNamePrefix }}
+      displayNameMetadata:
+        pullRequestId: $(System.PullRequest.PullRequestId)
+        commitHash: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetShortCommitHash.CommitHash'] ]
+      domainNamePrefix: ${{ parameters.domainNamePrefix }}
+      serviceConnection: ${{ parameters.serviceConnection }}
+      securityGroupId: ${{ parameters.securityGroupId }}
+      templates: ${{ parameters.templates }}
+      location: ${{ parameters.location }}
+      language: ${{ parameters.language }}
+      currency: ${{ parameters.currency }}
+      postCreateJobs:
+        - job: SetWorkItemHyperlink
+          displayName: Set work item hyperlink
+          variables:
+            SetWorkItemHyperlink.Url: $[ dependencies.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+            SetWorkItemHyperlink.EnvironmentId: $[ dependencies.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+            SetWorkItemHyperlink.CommitHash: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetShortCommitHash.CommitHash'] ]
+          steps:
+            - checkout: none
+            - template: ../../azure-devops/steps/serialise-to-json-steps.yml
+              parameters:
+                stepDisplayName: Get work item hyperlink metadata
+                object: 
+                  environment: validation
+                  pullRequestId: $(System.PullRequest.PullRequestId)
+                  runId: $(Build.BuildId)
+                  repoId: $(Build.Repository.ID)
+                  commitHash: $(SetWorkItemHyperlink.CommitHash)
+                variable: SetWorkItemHyperlink.HyperlinkMetadata
+            - template: ../../azure-devops/steps/add-pull-request-work-item-hyperlink-steps.yml
+              parameters:
+                pullRequestId: $(System.PullRequest.PullRequestId)
+                url: $(SetWorkItemHyperlink.Url)
+                comment: $(SetWorkItemHyperlink.HyperlinkMetadata)
+                historyComment: >
+                  <div>Created validation environment.</div>
+                  <div><br></div>
+                  <div><b>URL</b>: <a href="$(SetWorkItemHyperlink.Url)">$(SetWorkItemHyperlink.Url)</a></div>
+                  <div><b>Maker URL</b>: <a href="https://make.powerapps.com/environments/$(SetWorkItemHyperlink.EnvironmentId)">https://make.powerapps.com/environments/$(SetWorkItemHyperlink.EnvironmentId)</a></div>
+  - stage: PrepareEnvironment
+    displayName: Prepare environment
+    condition: and(not(canceled()), succeeded('CreateEnvironment'))
+    dependsOn: 
+      - AnalyseUpdates
+      - CreateEnvironment
+    variables:
+      BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+      BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+    jobs: 
+      - template: ../jobs/assign-group-access-job.yml
+        parameters:
+          serviceConnection: ${{ parameters.serviceConnection }}
+          securityGroupId: ${{ parameters.securityGroupId }}
+          teamName: Developers
+          roleName: System Administrator
+      - ${{ parameters.prepareEnvironmentJobs }}
+  - template: ../stages/deploy-package-stage.yml
+    parameters:
+      condition: and(not(canceled()), succeeded('PrepareEnvironment'))
+      dependsOn: 
+        - AnalyseUpdates
+        - BuildPackage
+        - CreateEnvironment
+        - PrepareEnvironment
+      environment: Power Platform - Ephemeral
+      serviceConnection: ${{ parameters.serviceConnection }}
+      packageArtifact: package
+      packageFile: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetPackageFile.PackageFile'] ]
+      url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+      variables:
+        - name: BuildTools.EnvironmentId
+          value: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+      ${{ if parameters.config }}:
+        config: ${{ parameters.config }}
+      preDeploymentSteps: ${{ parameters.preDeploymentSteps }}
+      postDeploymentJobs:
+        - job: AddWorkItemComment
+          displayName: Add work item comment
+          variables:
+            AddWorkItemComment.Url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+            AddWorkItemComment.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+            AddWorkItemComment.CommitHash: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetShortCommitHash.CommitHash'] ]
+          steps:
+            - checkout: none
+            - template: ../../azure-devops/steps/add-pull-request-work-item-comment-steps.yml
+              parameters:
+                pullRequestId: $(System.PullRequest.PullRequestId)
+                comment: >
+                  <div>Deployed to validation environment.</div>
+                  <div><br></div>
+                  <div><b>URL</b>: <a href="$(AddWorkItemComment.Url)">$(AddWorkItemComment.Url)</a></div>
+                  <div><b>Maker URL</b>: <a href="https://make.powerapps.com/environments/$(AddWorkItemComment.EnvironmentId)">https://make.powerapps.com/environments/$(AddWorkItemComment.EnvironmentId)</a></div>
+                  <div><b>Commit</b>: $(AddWorkItemComment.CommitHash)</div>
+      postDeploymentSteps: ${{ parameters.postDeploymentSteps }}
+      env: ${{ parameters.env }}  
+  - ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
+    - stage: FinaliseEnvironment
+      displayName: Finalise environment
+      condition: and(not(canceled()), succeeded('DeployPackage'))
+      dependsOn: 
+        - AnalyseUpdates
+        - CreateEnvironment
+        - DeployPackage
+      variables:
+        BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+        BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+      jobs: ${{ parameters.finaliseEnvironmentJobs }}
+  - ${{ if gt(length(parameters.testJobs), 0) }}:
+    - stage: Test
+      displayName: Test
+      ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
+        condition: |
+          and(
+            not(canceled()),
+            or(
+              succeeded('FinaliseEnvironment'),
+              and(
+                succeeded('AnalyseUpdates'), 
+                ne(variables['Test.FallbackEnvironment.Url'], '')
+              )
+            ) 
+          )
+      ${{ if eq(length(parameters.finaliseEnvironmentJobs), 0) }}:
+        condition: |
+          and(
+            not(canceled()),
+            or(
+              succeeded('DeployPackage'),
+              and(
+                succeeded('AnalyseUpdates'), 
+                ne(variables['Test.FallbackEnvironment.Url'], '')
+              )
+            ) 
+          )
+      dependsOn:
+        - AnalyseUpdates
+        - CreateEnvironment
+        - DeployPackage
+        - ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
+          - FinaliseEnvironment
+      variables:
+        Test.NewEnvironment.Url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+        Test.FallbackEnvironment.Url: ${{ parameters.fallbackTestEnvironmentUrl }}
+        Test.ExistingEnvironment.Url: $[ stageDependencies.AnalyseUpdates.FindExistingEnvironment.outputs['FindWorkItemHyperlink.Relation.url'] ]
+        BuildTools.EnvironmentUrl: $[ coalesce(variables['Test.ExistingEnvironment.Url'], variables['Test.NewEnvironment.Url'], variables['Test.FallbackEnvironment.Url']) ]
+      jobs: ${{ parameters.testJobs }}
+  - template: ../stages/wait-for-manual-validation-stage.yml
+    parameters:
+      ${{ if gt(length(parameters.testJobs), 0) }}:
+        condition: succeeded('Test')
+      ${{ if and(eq(length(parameters.testJobs), 0), gt(length(parameters.finaliseEnvironmentJobs), 0)) }}:
+        condition: succeeded('FinaliseEnvironment')
+      ${{ if and(eq(length(parameters.testJobs), 0), eq(length(parameters.finaliseEnvironmentJobs), 0)) }}:
+        condition: succeeded('DeployPackage')
+      dependsOn: 
+        - CreateEnvironment
+        - DeployPackage
+        - ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
+          - FinaliseEnvironment
+        - ${{ if gt(length(parameters.testJobs), 0) }}:
+          - Test
+      url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+  - template: ../stages/delete-environment-stage.yml
+    parameters:
+      condition: not(eq(dependencies.CreateEnvironment.outputs['CreateEnvironment.PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'], ''))
+      dependsOn:
+        - CreateEnvironment
+        - ManualValidation
+      serviceConnection: ${{ parameters.serviceConnection }}
+      url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+      postDeleteJobs:
+        - job: DeleteWorkItemLinks
+          displayName: Delete work item links
+          dependsOn: DeleteEnvironment
+          variables:
+            DeleteWorkItemLinks.Url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+          steps:
+            - checkout: none
+            - template: ../../azure-devops/steps/delete-pull-request-work-item-hyperlink-steps.yml
+              parameters:
+                pullRequestId: $(System.PullRequest.PullRequestId)
+                url: $(DeleteWorkItemLinks.Url)
+                historyComment: >
+                  <div>Deleted validation environment.</div>
+                  <div><br></div>
+                  <div><b>URL</b>: <a href="$(DeleteWorkItemLinks.Url)">$(DeleteWorkItemLinks.Url)</a></div>

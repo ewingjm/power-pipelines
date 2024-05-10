@@ -1,0 +1,73 @@
+parameters:
+  - name: solutionMetadataFolder
+    displayName: Solution metadata folder
+    type: string
+
+steps:
+  - powershell: |
+      Write-Host "Splitting missing dependencies inside $env:SPLITMISSINGDEPENDENCIES_SOLUTIONMETADATAFOLDER."
+      $solutionXml = Join-Path $env:SPLITMISSINGDEPENDENCIES_SOLUTIONMETADATAFOLDER "Other/Solution.xml"
+      
+      Write-Host "Unpacking MissingDependency nodes from $solutionXml into separate files."
+      [xml]$solution = Get-Content $solutionXml
+
+      [array]$missingDependencies = $solution.
+        ImportExportXml.
+        SolutionManifest.
+        MissingDependencies.
+        MissingDependency | Select-Object -ExpandProperty OuterXml 
+
+      Write-Host "Found $($missingDependencies.Length) MissingDependency nodes."
+
+      $outputDirectory = Join-Path `
+          -Path ([System.IO.Path]::GetDirectoryName($solutionXml)) `
+          -ChildPath "MissingDependencies"
+
+      Write-Host "Unpacking to $outputDirectory."
+
+      Get-ChildItem -Path $outputDirectory -Recurse | Remove-Item -force -recurse
+      mkdir -Force $outputDirectory | Out-Null
+
+      if ($missingDependencies.Length -eq 0) {
+          return;
+      }
+
+      for ($i = 0; $i -lt $missingDependencies.Count; $i++) {
+          [xml]$missingDependency = $missingDependencies[$i]
+
+          $missingDependencyKey = -join (
+              $missingDependency.MissingDependency.Required.type, 
+              $missingDependency.MissingDependency.Required.schemaName, 
+              $missingDependency.MissingDependency.Required.parentSchemaName, 
+              $missingDependency.MissingDependency.Required.id, 
+              $missingDependency.MissingDependency.Dependent.type, 
+              $missingDependency.MissingDependency.Dependent.schemaName, 
+              $missingDependency.MissingDependency.Dependent.parentSchemaName, 
+              $missingDependency.MissingDependency.Dependent.id)
+          
+          Write-Verbose "Processing MissingDependency with unique key: $missingDependencyKey."
+
+          $keyStream = [IO.MemoryStream]::new([byte[]][char[]]$missingDependencyKey)
+          $keyHash = Get-FileHash -InputStream $keyStream -Algorithm SHA1 | Select-Object -ExpandProperty Hash
+          $fileName = "$($keyHash.Substring(0, 10)).xml"
+          $outputFile = Join-Path -Path $outputDirectory -ChildPath $fileName
+          
+          if ($missingDependency.MissingDependency.Required.package) {
+              Write-Verbose "Removing package element."
+              $missingDependency.MissingDependency.Required.IsEmpty = $true
+          }
+
+          Write-Verbose "Saving missing dependency file to $fileName."
+          $missingDependency.Save($outputFile)
+      }
+
+      Write-Host "Removing nodes from Solution.xml."
+      $solution.ImportExportXml.SolutionManifest.MissingDependencies.IsEmpty = $true
+
+      Write-Host "Saving Solution.xml."
+      $solution.Save($solutionXml)
+    displayName: Split missing dependencies
+    env:
+      SPLITMISSINGDEPENDENCIES_SOLUTIONMETADATAFOLDER: ${{ parameters.solutionMetadataFolder }}
+
+    

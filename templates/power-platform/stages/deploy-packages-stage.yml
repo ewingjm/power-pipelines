@@ -1,0 +1,88 @@
+parameters:
+  - name: environment
+    displayName: Environment
+    type: string
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: packages
+    displayName: Packages
+    type: object
+  - name: url
+    displayName: URL (optional override)
+    type: string
+    default: ''
+  - name: tagSuccess
+    displayName: Tag resources on successful deployment
+    type: boolean
+    default: false
+  - name: postDeploymentJobs
+    displayName: Optional post-deployment jobs
+    type: jobList
+    default: []
+  - name: timeoutInMinutes
+    displayName: Timeout in minutes
+    type: number
+    default: 120
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+  - name: stageName
+    displayName: Stage name
+    type: string
+    default: DeployPackages
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: ${{ format('Deploy to {0}', parameters.environment) }}
+    ${{ if gt(length(parameters.dependsOn), 0) }}:      
+      dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    jobs:
+      - ${{ each package in parameters.packages }}:
+        - template: ../jobs/deploy-package-job.yml
+          parameters:
+            deploymentName: ${{ package.resource }}
+            deploymentDisplayName: ${{ format('Deploy {0}', package.resource) }}
+            dependsOn: ${{ package.dependsOn }}
+            environment: ${{ parameters.environment }}
+            serviceConnection: ${{ coalesce(package.serviceConnection, parameters.serviceConnection) }}
+            packageResource: ${{ package.resource }}
+            packageArtifact: ${{ package.artifact }}
+            packageFile: ${{ package.file }}
+            url: ${{ parameters.url }}
+            timeoutInMinutes: ${{ parameters.timeoutInMinutes }}
+            ${{ if package.config }}:
+              config: ${{ package.config }}
+            ${{ if package.preDeploymentSteps }}:
+              preDeploymentSteps: ${{ package.preDeploymentSteps }}
+            ${{ if package.postDeploymentSteps }}:
+              postDeploymentSteps: ${{ package.postDeploymentSteps }}
+      - ${{ each job in parameters.postDeploymentJobs }}:
+        - ${{ each pair in job }}:          
+            ${{ if ne(pair.key, 'dependsOn') }}:
+              ${{ pair.key }}: ${{ pair.value }}
+          dependsOn:                        
+            - ${{ each package in parameters.packages }}:
+                - ${{ package.resource }}
+            - ${{ if job.dependsOn }}:
+              - ${{ job.dependsOn }}
+      - ${{ if parameters.tagSuccess }}:
+        - template: ../jobs/tag-pipeline-resources-job.yml
+          parameters:
+            dependsOn:
+              - ${{ each package in parameters.packages }}:
+                - ${{ package.resource }}
+              - ${{ if gt(length(parameters.postDeploymentJobs), 0) }}:
+                - ${{ each job in parameters.postDeploymentJobs }}:
+                  - ${{ job.job }}
+            resources:
+              - ${{ each package in parameters.packages }}:
+                  - ${{ package.resource }}
+            tags:
+              - ${{ format('Deployed to {0}', parameters.environment) }}

@@ -1,0 +1,59 @@
+parameters:
+  - name: environmentId
+    displayName: Environment ID
+    type: string
+  - name: groupObjectId
+    displayName: Group object ID
+    type: string
+  - name: username
+    displayName: Username
+    type: string
+  - name: password
+    displayName: Password
+    type: string
+  - name: tenantID
+    displayName: Tenant ID
+    type: string
+  - name: applicationId
+    displayName: Application ID
+    type: string
+  - name: clientSecret
+    displayName: Client secret
+    type: string
+
+steps:
+  - powershell: |
+      if (!(Get-Module -ListAvailable -Name AzureAD)) { 
+        Install-Module -Name AzureAD -Force -Scope CurrentUser
+      }
+      
+      if (!(Get-Module -ListAvailable -Name Microsoft.PowerApps.Administration.PowerShell)) { 
+        Install-Module -Name Microsoft.PowerApps.Administration.PowerShell -Force -Scope CurrentUser
+      }
+
+      Write-Host "Forcing sync of Azure AD users."
+
+      Write-Host "Authenticating as $env:SYNCUSERS_APPLICATIONID."
+      Add-PowerAppsAccount -TenantID $env:SYNCUSERS_TENANTID -ApplicationId $env:SYNCUSERS_APPLICATIONID -ClientSecret $env:SYNCUSERS_CLIENTSECRET
+
+      $azureCredentials = [System.Management.Automation.PSCredential]::new($env:SYNCUSERS_USERNAME, (ConvertTo-SecureString $env:SYNCUSERS_PASSWORD -AsPlainText -Force))      
+      
+      Write-Host "Authenticating as $env:SYNCUSERS_USERNAME."
+      Connect-AzureAD -Credential $azureCredentials | Out-Null
+
+      $groupMembers = Get-AzureADGroupMember -ObjectId $env:SYNCUSERS_GROUP -All $true
+      Write-Host "Found $($groupMembers.Count) members to sync in Azure AD group."
+
+      $groupMembers | ForEach-Object {
+          Write-Host "Syncing $($_.DisplayName)."                  
+          Add-AdminPowerAppsSyncUser -EnvironmentName $env:SYNCUSERS_ENVIRONMENTID -PrincipalObjectId $_.ObjectId | Out-Null
+      }
+    displayName: Sync users
+    env:
+      SYNCUSERS_TENANTID: ${{ parameters.tenantId }}
+      SYNCUSERS_APPLICATIONID: ${{ parameters.applicationId }}
+      SYNCUSERS_CLIENTSECRET: ${{ parameters.clientSecret }}
+      SYNCUSERS_ENVIRONMENTID: ${{ parameters.environmentId }}
+      SYNCUSERS_GROUP: ${{ parameters.groupObjectId }}
+      SYNCUSERS_USERNAME: ${{ parameters.username }}
+      SYNCUSERS_PASSWORD: ${{ parameters.password }}

@@ -1,0 +1,88 @@
+parameters:
+  - name: pullRequestId
+    displayName: Pull Request ID
+    type: string
+  - name: url
+    displayName: External URL
+    type: string
+  - name: comment
+    displayName: Comment
+    type: string
+  - name: historyComment
+    displayName: History comment
+    type: string
+    default: ''
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Add pull request work item hyperlink(s)
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+steps:
+  - powershell: |
+      Write-Host "Adding pull request work item hyperlink(s)."
+      Write-Host "`tPull request ID: $env:ADDHYPERLINK_PULLREQUESTID"
+      Write-Host "`tURL: $env:ADDHYPERLINK_URL"
+      Write-Host "`tComment: $env:ADDHYPERLINK_COMMENT"
+      
+      az devops configure --defaults organization=$(System.TeamFoundationCollectionUri) project=$(System.TeamProject)
+      
+      $workItems = az repos pr work-item list --id $env:ADDHYPERLINK_PULLREQUESTID --query [*].id | ConvertFrom-Json
+      
+      if ($workItems.Length -eq 0) {
+        Write-Host "No work items found."
+        return
+      }
+
+      $apiBaseUrl = "$env:SYSTEM_TEAMFOUNDATIONCOLLECTIONURI$env:SYSTEM_TEAMPROJECT/"
+      $endpointUrl = "$($apiBaseUrl)_apis/wit/workitems"
+      $requestHeaders = @{
+        "Authorization" = "Bearer $env:AZURE_DEVOPS_EXT_PAT"
+        "Content-Type"  = "application/json-patch+json"
+      }
+
+      $requests = $workItems | ForEach-Object {
+        $patchDocument = [System.Collections.ArrayList]@(
+          @{
+            op    = "add"
+            path  = "/relations/-"
+            value = @{
+              url = $env:ADDHYPERLINK_URL
+              rel = "Hyperlink"
+              attributes = @{
+                comment = $env:ADDHYPERLINK_COMMENT
+                isLocked = $true
+              }
+            }
+          }
+        )
+
+        if ($env:ADDHYPERLINK_HISTORYCOMMENT) {
+          $patchDocument.Add(@{
+            op    = "add"
+            path  = "/fields/System.History"
+            value = $env:ADDHYPERLINK_HISTORYCOMMENT
+          }) | Out-Null
+        }
+
+        $request = ConvertTo-Json -Depth 4 -InputObject $patchDocument -Compress
+        $response = Invoke-WebRequest -Method Patch -Headers $requestHeaders -Uri "$endpointUrl/$($_)?api-version=7.0" -Body $request
+        
+        if ($response.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
+          Write-Error $response.StatusDescription
+          return
+        }
+      }
+
+      Write-Host "Work item link added successfully."      
+    displayName: ${{ parameters.stepDisplayName }}
+    condition: ${{ parameters.condition }}
+    env:
+      AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
+      ADDHYPERLINK_PULLREQUESTID: ${{ parameters.pullRequestId }}
+      ADDHYPERLINK_URL: ${{ parameters.url }}
+      ADDHYPERLINK_COMMENT: ${{ parameters.comment }}
+      ADDHYPERLINK_HISTORYCOMMENT: ${{ parameters.historyComment }}

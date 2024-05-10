@@ -1,0 +1,27 @@
+parameters:
+  - name: branch
+    displayName: Branch
+    type: string
+  - name: stepName
+    displayName: Step name
+    type: string
+    default: ''
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Checkout branch
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+steps:
+  - powershell: |
+      Write-Host "Checking out $env:CHECKOUTBRANCH_BRANCH."
+      git checkout $env:CHECKOUTBRANCH_BRANCH
+    displayName: ${{ parameters.stepDisplayName }}
+    ${{ if parameters.stepName }}:
+      name: ${{ parameters.stepName }}
+    condition: ${{ parameters.condition }}
+    env:
+      CHECKOUTBRANCH_BRANCH: ${{ parameters.branch }}

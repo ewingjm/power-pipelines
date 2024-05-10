@@ -1,0 +1,71 @@
+parameters:
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: environment
+    displayName: Environment
+    type: string
+  - name: packages
+    displayName: Packages
+    type: object
+  - name: url
+    displayName: URL (optional override)
+    type: string
+    default: ''
+  - name: tagSuccess
+    displayName: Tag resources on successful deployment
+    type: boolean
+    default: false
+  - name: postDeploymentJobs
+    displayName: Optional post-deployment jobs
+    type: jobList
+    default: []
+  - name: testJobs
+    displayName: Optional test jobs
+    type: jobList
+    default: []
+
+stages:
+  - template: ../stages/set-aggregate-run-number-stage.yml
+    parameters:
+      resources:
+        - ${{ each package in parameters.packages }}:
+          - ${{ package.resource }}
+  - template: ../stages/deploy-packages-stage.yml
+    parameters:
+      serviceConnection: ${{ parameters.serviceConnection }}
+      environment: ${{ parameters.environment }}
+      packages: ${{ parameters.packages }}
+      url: ${{ parameters.url }}
+      tagSuccess: ${{ parameters.tagSuccess }}
+      postDeploymentJobs: ${{ parameters.postDeploymentJobs }}  
+  - ${{ if gt(length(parameters.testJobs), 0) }}:
+    - stage: Test
+      displayName: Test
+      dependsOn:
+        - DeployPackages      
+      ${{ if parameters.url }}:
+        variables:
+          BuildTools.EnvironmentUrl: ${{ parameters.url }}
+        jobs: ${{ parameters.testJobs }}
+      ${{ if eq(parameters.url, '') }}:
+        jobs:
+          - ${{ each job in parameters.testJobs }}:
+            - ${{ each pair in job }}:          
+                ${{ if not(in(pair.key, 'steps', 'variables')) }}:
+                  ${{ pair.key }}: ${{ pair.value }}
+              variables:
+                - name: BuildTools.EnvironmentUrl
+                  value: ${{ parameters.url }}
+                - ${{ job.variables }}
+              steps:
+                - ${{ if eq(parameters.url, '') }}:
+                  - task: PowerPlatformToolInstaller@2
+                    displayName: Install Power Platform Build Tools
+                  - task: PowerPlatformSetConnectionVariables@2
+                    name: PowerPlatformSetConnectionVariables
+                    displayName: Set service connection variables
+                    inputs:
+                      authenticationType: PowerPlatformSPN
+                      PowerPlatformSPN: ${{ parameters.serviceConnection }}
+                - ${{ job.steps }}

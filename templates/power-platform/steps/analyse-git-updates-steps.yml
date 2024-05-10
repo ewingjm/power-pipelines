@@ -1,0 +1,62 @@
+parameters:
+  - name: ref
+    displayName: Ref
+    type: string
+  - name: filePatterns
+    displayName: File patterns
+    type: object
+  - name: stepName
+    displayName: Step name
+    type: string
+    default: GetIsUpdated
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Get is updated
+  - name: repository
+    displayName: Repository
+    type: string
+    default: $(Build.SourcesDirectory)
+
+steps:
+  - powershell: |
+      $repositoryRoot = git rev-parse --show-toplevel
+      
+      if ($env:GETISUPDATED_REF -match '^[0-9a-f]{7}$') {
+        Write-Host "Comparing HEAD with $env:GETISUPDATED_REF."
+        $updatedFiles = git diff --name-only "HEAD..$env:GETISUPDATED_REF" | ForEach-Object { "$repositoryRoot/$_" }
+      }
+      else {
+        Write-Host "Comparing HEAD with origin/$env:GETISUPDATED_REF."
+        $updatedFiles = git diff --name-only "HEAD..origin/$env:GETISUPDATED_REF" | ForEach-Object { "$repositoryRoot/$_" }
+      }
+
+      Write-Host "The following files have been updated:`n"
+      $updatedFiles | ForEach-Object { Write-Host " - $_" }
+      
+      $patterns = ($env:GETISUPDATED_PATTERNS -split "," -replace "\\", "/") | ForEach-Object { "$repositoryRoot/$_" }
+      Write-Host "`nChecking for changes matching the following:`n"
+      $patterns | ForEach-Object { Write-Host " - $_" }
+      
+      $updated = $false
+      foreach ($updatedFile in $updatedFiles) {
+        foreach ($pattern in $patterns) {
+            if ($updatedFile -like $pattern) {
+              $updated = $true
+              break
+            }
+        }
+
+        if ($updated) {
+          break
+        }
+      }
+            
+      Write-Host "`nFiles updated: $updated."
+      Write-Host "##vso[task.setvariable variable=IsUpdated;isOutput=true]$updated"
+    displayName: ${{ parameters.stepDisplayName }}
+    name: ${{ parameters.stepName }}
+    workingDirectory: ${{ parameters.repository }}
+    env:
+      GETISUPDATED_REF: ${{ parameters.ref }}
+      GETISUPDATED_PATTERNS: ${{ join(',', parameters.filePatterns) }}  

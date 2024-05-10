@@ -1,0 +1,48 @@
+parameters:
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: url
+    type: string
+    displayName: Optional URL to override the service connection
+    default: ''
+  - name: manualConfirmation
+    displayName: Manual confirmation
+    type: boolean
+    default: true
+  - name: postDeleteJobs
+    displayName: Post delete jobs
+    type: jobList
+    default: []
+  - name: stageName
+    displayName: Stage name
+    type: string
+    default: DeleteEnvironment
+  - name: dependsOn
+    type: object
+    displayName: Depends on
+    default: []
+  - name: condition
+    type: string
+    default: succeeded()
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: Delete environment
+    condition: ${{ parameters.condition }}
+    ${{ if gt(length(parameters.dependsOn), 0) }}:      
+      dependsOn: ${{ parameters.dependsOn }}
+    jobs:
+      - template: ../jobs/delete-environment-job.yml
+        parameters:
+          serviceConnection: ${{ parameters.serviceConnection }}
+          url: ${{ parameters.url }}
+          manualConfirmation: ${{ parameters.manualConfirmation }}
+      - ${{ each job in parameters.postDeleteJobs }}:
+        - ${{ each pair in job }}:          
+            ${{ if ne(pair.key, 'dependsOn') }}:
+              ${{ pair.key }}: ${{ pair.value }}
+          dependsOn:                        
+            - DeleteEnvironment
+            - ${{ if job.dependsOn }}:
+              - ${{ job.dependsOn }}

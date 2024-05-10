@@ -1,0 +1,85 @@
+parameters:
+  - name: pullRequestId
+    displayName: Pull Request ID
+    type: string
+  - name: url
+    displayName: External URL
+    type: string
+  - name: historyComment
+    displayName: History comment
+    type: string
+    default: ''
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Delete pull request work item hyperlink(s)
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+steps:
+  - powershell: |
+      Write-Host "Deleting pull request work item hyperlink(s)."
+      Write-Host "`tPull request ID: $env:DELETEHYPERLINK_PULLREQUESTID"
+      Write-Host "`tURL: $env:DELETEHYPERLINK_URL"
+      
+      az devops configure --defaults organization=$(System.TeamFoundationCollectionUri) project=$(System.TeamProject)
+      
+      $workItems = az repos pr work-item list --id $env:DELETEHYPERLINK_PULLREQUESTID --query [*].id | ConvertFrom-Json
+      
+      if ($workItems.Length -eq 0) {
+        Write-Host "No work items found."
+        return
+      }
+
+      $apiBaseUrl = "$env:SYSTEM_TEAMFOUNDATIONCOLLECTIONURI$env:SYSTEM_TEAMPROJECT/"
+      $endpointUrl = "$($apiBaseUrl)_apis/wit/workitems"
+      $requestHeaders = @{
+        "Authorization" = "Bearer $env:AZURE_DEVOPS_EXT_PAT"
+        "Content-Type"  = "application/json-patch+json"
+      }
+
+      $searchUri = [System.Uri]::new($env:DELETEHYPERLINK_URL)
+      
+      $workItems | ForEach-Object {
+        $workItemId = $_
+        $workItem = az boards work-item show --id $workItemId --expand relations | ConvertFrom-Json 
+        [array]$relationsToDelete = $workItem.relations | Where-Object { [System.Uri]::new($_.url) -eq $searchUri }
+        [array]::Reverse($relationsToDelete)
+        
+        $relationsToDelete | ForEach-Object {
+          $patchDocument = [System.Collections.ArrayList]@(
+            @{
+                op    = "remove"
+                path  = "/relations/$($workItem.relations.IndexOf($_))"
+                value = $null
+            }
+          )
+
+          $deleteRelationParameters = @{
+            Method          = "PATCH"
+            Headers         = $requestHeaders
+            Uri             = "$endpointUrl/$($workItemId)?api-version=7.0"
+            Body            = ConvertTo-Json -InputObject $patchDocument -Compress
+            UseBasicParsing = $true
+          }
+
+          $deleteRelationResponse = Invoke-WebRequest @deleteRelationParameters
+          if ($deleteRelationResponse.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
+              Write-Warning $deleteRelationResponse.StatusDescription
+              return
+          }
+
+          Write-Host "Deleted work item hyperlink for $workItemId."
+        }       
+        
+        az boards work-item update --id $workItemId --discussion $env:DELETEHYPERLINK_HISTORYCOMMENT | Out-Null 
+      }
+    displayName: ${{ parameters.stepDisplayName }}
+    condition: ${{ parameters.condition }}
+    env:
+      AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
+      DELETEHYPERLINK_PULLREQUESTID: ${{ parameters.pullRequestId }}
+      DELETEHYPERLINK_URL: ${{ parameters.url }}
+      DELETEHYPERLINK_HISTORYCOMMENT: ${{ parameters.historyComment }}

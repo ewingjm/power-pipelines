@@ -1,0 +1,44 @@
+parameters:
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: environmentId
+    displayName: Environment ID
+    type: string
+  - name: securityGroupId
+    displayName: Security group ID
+
+steps:
+  - task: PowerPlatformSetConnectionVariables@2
+    displayName: Set service connection variables
+    name: SetUpdateSecurityGroupConnectionVariables
+    inputs:
+      authenticationType: PowerPlatformSPN
+      PowerPlatformSPN: ${{ parameters.serviceConnection }}
+  # Not currently possible to set at create time via the Power Platform Build Tools task
+  - powershell: |
+      if (-not (Get-Module Microsoft.PowerApps.Administration.PowerShell -ListAvailable)) {
+        Install-Module Microsoft.PowerApps.Administration.PowerShell -Scope CurrentUser -Force
+      }
+
+      Write-Host "Authenticating."
+      Add-PowerAppsAccount -TenantID $env:UPDATESECURITYGROUP_MANAGEMENTAPP_TENANTID -ApplicationId $env:UPDATESECURITYGROUP_MANAGEMENTAPP_APPLICATIONID -ClientSecret $env:UPDATESECURITYGROUP_MANAGEMENTAPP_CLIENTSECRET
+      
+      Write-Host "Assigning security group."
+      InvokeApi -Method PATCH `
+        -Route "https://api.bap.microsoft.com/providers/Microsoft.BusinessAppPlatform/scopes/admin/environments/$($env:UPDATESECURITYGROUP_ENVIRONMENTID)?api-version=2020-06-01" `
+        -ThrowOnFailure `
+        -Body @{ 
+          properties = @{ 
+            linkedEnvironmentMetadata = @{ 
+              securityGroupId = $env:UPDATESECURITYGROUP_SECURITYGROUPID 
+            }
+          }
+        }
+    displayName: Set security group on environment
+    env:
+      UPDATESECURITYGROUP_SECURITYGROUPID: ${{ parameters.securityGroupId }}
+      UPDATESECURITYGROUP_ENVIRONMENTID: ${{ parameters.environmentId }}
+      UPDATESECURITYGROUP_MANAGEMENTAPP_TENANTID: $(SetUpdateSecurityGroupConnectionVariables.BuildTools.TenantId)
+      UPDATESECURITYGROUP_MANAGEMENTAPP_APPLICATIONID: $(SetUpdateSecurityGroupConnectionVariables.BuildTools.ApplicationId)
+      UPDATESECURITYGROUP_MANAGEMENTAPP_CLIENTSECRET: $(SetUpdateSecurityGroupConnectionVariables.BuildTools.ClientSecret)

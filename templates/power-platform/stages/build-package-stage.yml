@@ -1,0 +1,50 @@
+parameters:
+  - name: packageProject
+    displayName: Package project
+    type: string
+  - name: unitTestsProject
+    displayName: Unit tests project
+    type: string
+    default: ''
+  - name: additionalProjects
+    displayName: Additional projects
+    type: object
+    default: []
+  - name: unmanagedSolution
+    displayName: Unmanaged solution
+    type: string
+    default: ''
+  - name: artifactName
+    displayName: Artifact name
+    type: string
+    default: package
+  - name: preBuildSteps
+    displayName: Pre-build steps
+    type: stepList
+    default: []
+  - name: postBuildSteps
+    displayName: Post-build steps
+    type: stepList
+    default: []
+  - name: dotNetSdkVersion
+    displayName: .NET SDK version
+    type: string
+    default: 6.x
+  - name: stageName
+    displayName: Stage name
+    default: BuildPackage
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: Build package
+    jobs:
+      - template: ../jobs/build-package-job.yml
+        parameters:
+          packageProject: ${{ parameters.packageProject }}
+          unitTestsProject: ${{ parameters.unitTestsProject }}
+          additionalProjects: ${{ parameters.additionalProjects }}
+          unmanagedSolution: ${{ parameters.unmanagedSolution }}
+          artifactName: ${{ parameters.artifactName }}
+          preBuildSteps: ${{ parameters.preBuildSteps }}
+          postBuildSteps: ${{ parameters.postBuildSteps }}
+          dotNetSdkVersion: ${{ parameters.dotNetSdkVersion }}  

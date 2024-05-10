@@ -1,0 +1,66 @@
+parameters:
+  - name: resources
+    displayName: Resource
+    type: object
+  - name: jobName
+    displayName: Job name
+    type: string
+    default: SetAggregateRunNumber
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: Set aggregate run number
+    dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    variables:
+      SetAggregateRunNumber.Resources: ${{ convertToJson(parameters.resources) }}
+    steps:
+      - powershell: |
+          $versionRegex = '^(?<major>[0-9]+)(\.(?<minor>[0-9]+))?(\.(?<patch>[0-9]+))?(\.(?<revision>[0-9]+))?(-(?<suffix>.+))?$'
+
+          $versionMajor = 0 
+          $versionMinor = 0 
+          $versionPatch = 0
+          $versionRevision = 0
+          $versionSuffix = ''
+
+          $json = $env:SETAGGREGATERUNNUMBER_RESOURCES | ConvertFrom-Json 
+          $json | ForEach-Object {
+            Write-Host "Getting version for $_ resource."
+            $version = [System.Environment]::GetEnvironmentVariable("resources_pipeline_$($_)_runName") 
+            Write-Host "Version is $version.`n"
+            
+            $result = [regex]::Match($version, $versionRegex)
+
+            if (!$result.Success) {
+              Write-Host "##vso[task.logissue type=warning]The version of resource $_ ($version) is not a valid version number. Excluding from calculation"
+            }
+
+            $versionMajor += $result.Groups['major'].Value
+            $versionMinor += $result.Groups['minor'].Value
+            $versionPatch += $result.Groups['patch'].Value
+            $versionRevision += $result.Groups['revision'].Value
+            $versionSuffix += $result.Groups['suffix'].Value
+          }
+
+          $version = "$versionMajor.$versionMinor.$versionPatch"
+
+          if ($versionRevision) {
+            $version += ".$versionRevision"
+          }
+
+          if ($versionSuffix) {
+            $version += "-$versionSuffix"
+          }
+
+          Write-Host "Aggregated version is $version."
+          Write-Host "##vso[build.updatebuildnumber]$version"
+        displayName: Set aggregate run number

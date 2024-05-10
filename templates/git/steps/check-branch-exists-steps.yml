@@ -1,0 +1,53 @@
+parameters:
+  - name: branch
+    displayName: Branch
+    type: string
+  - name: variable
+    displayName: Variable
+    type: string
+    default: CheckBranchExists.Exists
+  - name: errorOnNotExists
+    displayName: Error on not exists
+    type: boolean
+    default: false
+  - name: stepName
+    displayName: Step name
+    type: string
+    default: ''
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Check branch exists
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+steps:
+  - powershell: |
+      $ref = "$env:CHECKBRANCHEXISTS_BRANCH"
+      Write-Host "Checking if $ref exists."
+      
+      $existsOnLocal = $null -ne (git rev-parse --verify --quiet $ref)
+      $existsOnRemote = $null -ne (git rev-parse --verify --quiet "origin/$ref")
+      $exists = $existsOnLocal -or $existsOnRemote
+      
+      Write-Host "Exists local: $existsOnLocal."
+      Write-Host "Exists remote: $existsOnRemote."
+      Write-Host "Setting $env:CHECKBRANCHEXISTS_VARIABLE variable."
+      Write-Host "##vso[task.setvariable variable=$env:CHECKBRANCHEXISTS_VARIABLE;]$exists"
+
+      if (!$exists -and [bool]::Parse($env:CHECKBRANCHEXISTS_ERRORONNOTEXISTS)) {
+        Write-Host "##vso[task.logissue type=error]The provided branch ($ref) was not found."
+        exit 1
+      }
+
+      exit 0
+    displayName: ${{ parameters.stepDisplayName }}
+    ${{ if parameters.stepName }}:
+      name: ${{ parameters.stepName }}
+    condition: ${{ parameters.condition }}
+    env:
+      CHECKBRANCHEXISTS_BRANCH: ${{ parameters.branch }}
+      CHECKBRANCHEXISTS_VARIABLE: ${{ parameters.variable }}
+      CHECKBRANCHEXISTS_ERRORONNOTEXISTS: ${{ parameters.errorOnNotExists }}

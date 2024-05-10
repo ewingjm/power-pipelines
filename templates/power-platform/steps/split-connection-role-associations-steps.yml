@@ -1,0 +1,67 @@
+parameters:
+  - name: solutionMetadataFolder
+    displayName: Solution metadata folder
+    type: string
+
+steps:
+  - powershell: |
+      Write-Host "Splitting connection role associations inside $env:SPLITCONNECTIONROLEASSOCIATIONS_SOLUTIONMETADATAFOLDER."
+      $connectionRolesXml = Join-Path $env:SPLITCONNECTIONROLEASSOCIATIONS_SOLUTIONMETADATAFOLDER "Other/ConnectionRoles.xml"
+      
+      if (!(Test-Path $connectionRolesXml)) {
+        Write-Host "No connection roles found. Skipping."
+        return
+      }
+
+      Write-Host "Unpacking ConnectionRoleAssociations nodes from $connectionRolesXml into separate files."
+      $xmlDoc = [xml](Get-Content $connectionRolesXml)
+
+      $connectionRoleAssociations = [array]$xmlDoc.ConnectionRoles.ConnectionRoleAssociations.ConnectionRoleAssociation | Select-Object -ExpandProperty OuterXml 
+      Write-Host "Found $($connectionRoleAssociations.Length) ConnectionRoleAssociation nodes."
+
+      if (-not($connectionRoleAssociations.Length -gt 0)) { return }
+
+      $outputDirectory = Join-Path `
+      -Path ([System.IO.Path]::GetDirectoryName($connectionRolesXml)) `
+      -ChildPath "ConnectionRoleAssociations"
+
+      Write-Host "Unpacking to $outputDirectory"
+
+      Get-ChildItem -Path $outputDirectory -Recurse | Remove-Item -Force -Recurse
+      mkdir -Force $outputDirectory | Out-Null
+
+      foreach ($item in $connectionRoleAssociations)
+      {
+          [xml]$roleAssociation = $item
+          $connectionroleid = $roleAssociation.ConnectionRoleAssociation.connectionroleid
+          $associatedconnectionroleid = $roleAssociation.ConnectionRoleAssociation.associatedconnectionroleid
+              
+          $result = ($connectionroleid -gt $associatedconnectionroleid)
+          if ($result)
+          {         
+              $roleAssociation.ConnectionRoleAssociation.connectionroleid = $associatedconnectionroleid
+              $roleAssociation.ConnectionRoleAssociation.associatedconnectionroleid = $connectionroleid
+          }
+              
+          $uniqueKey = $roleAssociation.ConnectionRoleAssociation.connectionroleid + "-" + $roleAssociation.ConnectionRoleAssociation.associatedconnectionroleid
+          $keyStream = [IO.MemoryStream]::new([byte[]][char[]]$uniqueKey)
+          $keyHash = Get-FileHash -InputStream $keyStream -Algorithm SHA1 | Select-Object -ExpandProperty Hash
+          $fileName = "$($keyHash.Substring(0, 10)).xml"
+          $outputFile = Join-Path -Path $outputDirectory -ChildPath $fileName
+
+          Write-Verbose "Saving connection role association file to $fileName"
+          $roleAssociation.Save($outputFile)
+      }
+
+      Write-Host "Removing nodes from ConnectionRoles.xml"
+      if ( -not($xmlDoc.ConnectionRoles.ConnectionRoleAssociations.IsEmpty))
+      {
+          $xmlDoc.ConnectionRoles.ConnectionRoleAssociations.IsEmpty = $true
+          Write-Host "Saving ConnectionRoles.xml"
+          $xmlDoc.Save($connectionRolesXml)
+      }
+    displayName: Split connection role associations 
+    env:
+      SPLITCONNECTIONROLEASSOCIATIONS_SOLUTIONMETADATAFOLDER: ${{ parameters.solutionMetadataFolder }}
+
+    

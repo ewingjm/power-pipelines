@@ -1,0 +1,15 @@
+<Project>
+    <!-- The solution metadata gets copied to the obj folder before the pack target starts. We need
+    to transform it for pack operations to avoid needing to separate mapping files for packing and
+    unpacking. We just prepend '..\..\' to the mapping 'to' paths. -->
+    <Target Name="TransformMappingFile" BeforeTargets="PowerAppsPackage">
+        <Copy SourceFiles="$(SolutionPackageMapSourceFilePath)"
+            DestinationFolder="$(IntermediateOutputPath)" />
+        <XmlPeek XmlInputPath="$(SolutionPackageMapFilePath)" Query="/Mapping/*/@to">
+            <Output TaskParameter="Result" ItemName="MappingDirective" />
+        </XmlPeek>
+        <XmlPoke XmlInputPath="$(SolutionPackageMapFilePath)"
+            Value="..\..\%(MappingDirective.Identity)"
+            Query="/Mapping/*/@to[.='%(MappingDirective.Identity)']" />
+    </Target>
+</Project>

@@ -1,0 +1,27 @@
+parameters:
+  - name: serviceConnection
+    type: string
+    displayName: The service connection to use
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+
+jobs:
+  - job: BackupEnvironment
+    displayName: Backup environment
+    ${{ if parameters.dependsOn }}:
+      dependsOn: ${{ parameters.dependsOn }}
+    pool:
+      vmImage: windows-latest
+    steps:
+      - checkout: none
+      - task: PowerPlatformToolInstaller@2
+        displayName: Install Power Platform Build Tools
+        inputs:
+          DefaultVersion: true
+      - task: PowerPlatformBackupEnvironment@0
+        displayName: Create backup
+        inputs:
+          authenticationType: PowerPlatformSPN
+          PowerPlatformSPN: ${{ parameters.serviceConnection }}

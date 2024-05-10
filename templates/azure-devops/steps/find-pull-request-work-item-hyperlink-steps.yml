@@ -1,0 +1,133 @@
+parameters:
+  - name: pullRequestId
+    displayName: Pull request ID
+    type: string
+    default: $(System.PullRequest.PullRequestId)
+  - name: metadataQuery
+    displayName: Metadata query
+    type: object
+  - name: variablePrefix
+    displayName: Variable prefix
+    type: string
+    default: Relation
+  - name: stepName
+    displayName: Step name
+    type: string
+    default: FindWorkItemHyperlink
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Find work item hyperlink
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+steps:
+  - powershell: |
+      function Test-ObjectSubset {
+          param (
+              [PSObject] $Object1,
+              [PSObject] $Object2
+          )
+
+          if ($Object1 -is [string] -or $Object1 -is [int] -or $Object1 -is [double]) {
+            if ($Object1 -ne $Object2){
+              return $false
+            }
+          }
+
+          $Object1Properties = $Object1 | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name
+          $Object2Properties = $Object2 | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name
+
+          foreach ($property in $Object1Properties) {
+              if ($Object2Properties -notcontains $property) {
+                  return $false
+              }
+
+              $Object1Value = $Object1 | Select-Object -ExpandProperty $property
+              $Object2Value = $Object2 | Select-Object -ExpandProperty $property
+
+              if (!(Test-ObjectSubset $Object1Value $Object2Value)) {
+                  return $false
+              }
+          }
+
+          return $true
+      }
+
+      function Set-VariablesFromObject {
+          param(
+              [Parameter(Mandatory)]
+              [object]$Object,
+                    
+              [Parameter(Mandatory)]
+              [string]$VariablePrefix
+          )
+
+          foreach ($property in $Object.psobject.properties) {
+              $propertyName = $property.Name
+              $propertyValue = $property.Value
+
+              if ($propertyValue -is [PSCustomObject]) {
+                  Set-VariablesFromObject -Object $propertyValue -VariablePrefix "$VariablePrefix.$propertyName"
+              }
+              elseif ($propertyValue -is [string] -and $propertyValue -match '^\{.*\}$') {
+                  Set-VariablesFromObject -Object ($propertyValue | ConvertFrom-Json) -VariablePrefix "$VariablePrefix.$propertyName"
+              } 
+              else {
+                  Write-Host "Setting $VariablePrefix.$propertyName variable to $propertyValue."
+                  Write-Host "##vso[task.setvariable variable=$VariablePrefix.$propertyName;isOutput=true]$($propertyValue)"
+              }
+          }
+      }
+
+      Write-Host "Finding pull request work item hyperlink."
+      Write-Host "`Pull request ID: $env:FINDWORKITEMHYPERLINK_WORKITEMID"
+      Write-Host "`tMetadata:`n$env:FINDWORKITEMHYPERLINK_METADATAQUERY"
+                        
+      az devops configure --defaults organization=$(System.TeamFoundationCollectionUri) project=$(System.TeamProject)
+
+      Write-Host "Getting work items associated with pull request $env:FINDWORKITEMHYPERLINK_PULLREQUESTID."
+      $workItemIds = az repos pr work-item list --id $env:FINDWORKITEMHYPERLINK_PULLREQUESTID --query [*].id | ConvertFrom-Json
+
+      foreach ($workItemId in $workItemIds) {
+          Write-Host "Getting links for work item $workItemId."
+          $workItem = az boards work-item show --id $workItemId --expand relations | ConvertFrom-Json
+          $relations = $workItem.relations | Where-Object rel -eq "Hyperlink" | Sort-Object -Property { $_.attributes.resourceCreatedDate } -Descending
+
+          if ($relations.Count -eq 0) {
+              Write-Host "No work item hyperlinks found for work item $workItemId ."
+              continue
+          }
+
+          $metadataQuery = $env:FINDWORKITEMHYPERLINK_METADATAQUERY | ConvertFrom-Json
+          foreach ($relation in $relations) {
+              try {
+                  $linkMetadata = $relation.attributes.comment | ConvertFrom-Json 
+              } 
+              catch { 
+                  continue
+              }
+
+              if (!(Test-ObjectSubset $metadataQuery $linkMetadata)) {
+                  continue;
+              }
+
+              Write-Host "Work item link found: $($relation.url)."
+              Write-Host "Expanding work item link to pipeline variables."
+              Set-VariablesFromObject -Object $relation -VariablePrefix $env:FINDWORKITEMHYPERLINK_VARIABLEPREFIX
+                
+              return
+          }
+      }
+
+      Write-Host "Pull request work item link not found."  
+    name: ${{ parameters.stepName }}
+    displayName: ${{ parameters.stepDisplayName }}
+    condition: ${{ parameters.condition }}
+    env:
+      AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
+      FINDWORKITEMHYPERLINK_PULLREQUESTID: ${{ parameters.pullRequestId }}
+      FINDWORKITEMHYPERLINK_METADATAQUERY: ${{ convertToJson(parameters.metadataQuery) }}
+      FINDWORKITEMHYPERLINK_VARIABLEPREFIX: ${{ parameters.variablePrefix }}

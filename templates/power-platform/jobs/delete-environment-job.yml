@@ -1,0 +1,61 @@
+parameters:
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: url
+    type: string
+    displayName: Optional URL to override the service connection
+    default: ''
+  - name: manualConfirmation
+    displayName: Manual confirmation
+    type: boolean
+    default: true
+  - name: jobName
+    displayName: Job name
+    type: string
+    default: DeleteEnvironment
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+
+jobs:
+  - ${{ if parameters.manualConfirmation }}:
+    - job: ${{ format('Confirm{0}', parameters.jobName) }}
+      displayName: Confirm deletion
+      pool: server
+      timeoutInMinutes: 8640
+      dependsOn: ${{ parameters.dependsOn }}
+      ${{ if parameters.url }}:
+        variables:
+          BuildTools.EnvironmentUrl: ${{ parameters.url }}
+      steps:
+        - task: ManualValidation@0
+          displayName:  Confirm deletion
+          timeoutInMinutes: 7200
+          inputs:
+            onTimeout: resume
+            instructions: Approve to delete the $(BuildTools.EnvironmentUrl) environment or reject to retain it.
+  - job: ${{ parameters.jobName }}
+    displayName: Delete environment
+    ${{ if or(parameters.manualConfirmation, parameters.dependsOn) }}:
+      dependsOn: 
+        - ${{ each dependency in parameters.dependsOn }}: 
+          - ${{ dependency }}
+        - ${{ if parameters.manualConfirmation }}: 
+          - ${{ format('Confirm{0}', parameters.jobName) }}
+    ${{ if parameters.url }}:
+      variables:
+        BuildTools.EnvironmentUrl: ${{ parameters.url }}
+    steps:
+      - checkout: none
+      - task: PowerPlatformToolInstaller@2
+        displayName: Install Power Platform Build Tools
+        inputs:
+          DefaultVersion: true
+      - task: PowerPlatformDeleteEnvironment@2
+        displayName: Delete environment
+        continueOnError: true
+        inputs:
+          authenticationType: PowerPlatformSPN
+          PowerPlatformSPN: ${{ parameters.serviceConnection }}

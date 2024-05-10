@@ -1,0 +1,97 @@
+parameters:
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: displayNamePrefix
+    displayName: Display name prefix
+    type: string
+  - name: displayNameMetadata
+    displayName: Display name metadata
+    type: object
+    default: {}
+  - name: domainNamePrefix
+    displayName: Domain name prefix
+    type: string
+  - name: templates
+    displayName: Templates
+    type: string
+    default: ''
+  - name: location
+    displayName: Location
+    type: string
+    default: europe
+  - name: language
+    displayName: Language
+    type: string
+    default: English
+  - name: currency
+    displayName: Currency
+    type: string
+    default: GBP
+  - name: sku
+    displayName: SKU
+    type: string
+    default: Sandbox
+  - name: securityGroupId
+    displayName: Security group ID
+    type: string
+    default: ''
+  - name: jobName
+    displayName: Job name
+    type: string
+    default: CreateEnvironment
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: Create environment
+    ${{ if parameters.dependsOn }}:
+      dependsOn: ${{ parameters.dependsOn }}
+    variables: 
+      CreateEnvironment.DisplayNamePrefix: ${{ parameters.displayNamePrefix }}
+      CreateEnvironment.DomainNamePrefix: ${{ parameters.domainNamePrefix }}
+      CreateEnvironment.Templates: ${{ parameters.templates }}
+      CreateEnvironment.Location: ${{ parameters.location }}
+      CreateEnvironment.Language: ${{ parameters.language }}
+      CreateEnvironment.Currency: ${{ parameters.currency }}  
+      CreateEnvironment.SKU: ${{ parameters.sku }}
+      ${{ if parameters.securityGroupId }}:
+        CreateEnvironment.SecurityGroupId: ${{ parameters.securityGroupId }}
+      ${{ if parameters.displayNameMetadata}}:
+        ${{ each metadata in parameters.displayNameMetadata }}:
+          CreateEnvironment.DisplayName.${{ metadata.Key }}: ${{ metadata.value }}
+    steps:
+      - checkout: none
+      - template: ../steps/calculate-ephemeral-environment-name-steps.yml
+        parameters:
+          displayNamePrefix: $(CreateEnvironment.DisplayNamePrefix)
+          domainNamePrefix: $(CreateEnvironment.DomainNamePrefix)
+          ${{ if parameters.displayNameMetadata}}:
+            displayNameMetadata:
+              ${{ each metadata in parameters.displayNameMetadata }}:
+                ${{ metadata.Key }}: $(CreateEnvironment.DisplayName.${{ metadata.Key }})
+      - task: PowerPlatformToolInstaller@2
+        displayName: Install Power Platform Build Tools
+        inputs:
+          DefaultVersion: true
+      - task: PowerPlatformCreateEnvironment@2
+        displayName: Create environment
+        name: PowerPlatformCreateEnvironment
+        inputs:
+          authenticationType: PowerPlatformSPN
+          PowerPlatformSPN: ${{ parameters.serviceConnection }}
+          DisplayName: $(CalculateEnvironmentName.DisplayName)
+          DomainName: $(CalculateEnvironmentName.DomainName)
+          EnvironmentSku: $(CreateEnvironment.SKU)
+          AppsTemplate: $(CreateEnvironment.Templates)
+          LocationName: $(CreateEnvironment.Location)
+          LanguageName: $(CreateEnvironment.Language)
+          CurrencyName: $(CreateEnvironment.Currency)
+      - template: ../steps/update-environment-security-group-steps.yml
+        parameters:
+          serviceConnection: ${{ parameters.serviceConnection }}
+          environmentId: $(PowerPlatformCreateEnvironment.BuildTools.EnvironmentId)
+          securityGroupId: $(CreateEnvironment.SecurityGroupId)

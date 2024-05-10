@@ -1,0 +1,75 @@
+parameters:
+  - name: workItemId
+    displayName: Work Item ID
+    type: string
+  - name: branch
+    displayName: Branch
+    type: string
+  - name: comment
+    displayName: Comment
+    type: string
+  - name: historyComment
+    displayName: History comment
+    type: string
+    default: ''
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Add work item branch
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+steps:
+  - powershell: |
+      Write-Host "Adding a work item Git branch."
+      Write-Host "`tWork item ID: $env:ADDBRANCH_WORKITEMID"
+      Write-Host "`tComment: $env:ADDBRANCH_COMMENT"
+      
+      $apiBaseUrl = "$env:SYSTEM_TEAMFOUNDATIONCOLLECTIONURI$env:SYSTEM_TEAMPROJECT/"
+      $endpointUrl = "$($apiBaseUrl)_apis/wit/workitems/$($env:ADDBRANCH_WORKITEMID)?api-version=7.0"
+      $requestHeaders = @{
+          "Authorization" = "Bearer $env:AZURE_DEVOPS_EXT_PAT"
+          "Content-Type"  = "application/json-patch+json"
+      }
+      $patchDocument = [System.Collections.ArrayList]@(
+        @{
+          op    = "add"
+          path  = "/relations/-"
+          value = @{
+            url = "vstfs:///Git/Ref/$env:SYSTEM_TEAMPROJECTID/$env:BUILD_REPOSITORY_ID/GB$env:ADDBRANCH_BRANCH"
+            rel = "ArtifactLink"
+            attributes = @{
+              name = "Branch"
+              comment = $env:ADDBRANCH_BRANCH
+              isLocked = $true
+            }
+          }
+        }
+      )
+      if ($env:ADDBRANCH_HISTORYCOMMENT) {
+        $patchDocument.Add(@{
+          op    = "add"
+          path  = "/fields/System.History"
+          value = $env:ADDBRANCH_HISTORYCOMMENT
+        }) | Out-Null
+      }
+      $requestBody = ConvertTo-Json -Depth 4 -InputObject $patchDocument -Compress
+      
+      $response = Invoke-WebRequest -Method Patch -Headers $requestHeaders -Uri $endpointUrl -Body $requestBody
+      
+      if ($response.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
+        Write-Error $response.StatusDescription
+        return
+      }
+      
+      Write-Host "Work item Git branch added successfully."      
+    displayName: ${{ parameters.stepDisplayName }}
+    condition: ${{ parameters.condition }}
+    env:
+      AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
+      ADDBRANCH_WORKITEMID: ${{ parameters.workItemId }}
+      ADDBRANCH_BRANCH: ${{ parameters.branch }}
+      ADDBRANCH_COMMENT: ${{ parameters.comment }}
+      ADDBRANCH_HISTORYCOMMENT: ${{ parameters.historyComment }}

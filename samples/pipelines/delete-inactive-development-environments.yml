@@ -1,0 +1,33 @@
+
+pool:
+  vmImage: windows-latest
+
+trigger: none
+
+schedules:
+  - cron: '0 0 * * *'
+    displayName: Daily midnight run
+    branches:
+      include:
+        - main
+    always: true
+
+resources:
+  repositories:
+    - repository: power-pipelines
+      name: ewingjm/power-pipelines
+      ref: refs/heads/main 
+      type: github
+      endpoint: your-service-endpoint
+
+extends:
+  template: templates/power-platform/pipelines/delete-work-item-environments-pipeline.yml@power-pipelines
+  parameters:
+    serviceConnection: Sales Management App
+    categorystates:
+      - Removed
+      - Completed
+    metadata:
+      environment: development
+      repoId: contoso-sales
+    createdby: 1c0e6ba5-cf1d-4cb9-90a2-984ccf5b9a6d

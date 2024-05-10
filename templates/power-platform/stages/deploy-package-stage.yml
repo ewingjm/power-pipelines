@@ -1,0 +1,92 @@
+parameters:
+  - name: environment
+    displayName: Environment
+    type: string
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: packageResource
+    displayName: Package resource
+    type: string
+    default: ''
+  - name: packageArtifact
+    displayName: Package artifact
+    type: string
+  - name: packageFile
+    displayName: Package file
+    type: string
+  - name: config
+    displayName: Package Deployer config file
+    type: string
+    default: ''
+  - name: url
+    displayName: URL
+    type: string
+    default: ''
+  - name: timeoutInMinutes
+    displayName: Timeout in minutes
+    type: number
+    default: 120
+  - name: preDeploymentSteps
+    displayName: Pre-deployment steps
+    type: stepList
+    default: []
+  - name: postDeploymentSteps
+    displayName: Post-deployment steps
+    type: stepList
+    default: []
+  - name: postDeploymentJobs
+    displayName: Optional post-deployment jobs
+    type: jobList
+    default: []
+  - name: env
+    displayName: Deployment environment variables
+    type: object
+    default: []
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+  - name: stageName
+    displayName: stageName
+    type: string
+    default: DeployPackage
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+  - name: variables
+    displayName: Stage variables
+    type: object
+    default: []
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: Deploy package
+    ${{ if gt(length(parameters.dependsOn), 0) }}:      
+      dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    variables: ${{ parameters.variables }}
+    jobs:
+      - template: ../jobs/deploy-package-job.yml
+        parameters:
+          environment: ${{ parameters.environment }}
+          serviceConnection: ${{ parameters.serviceConnection }}
+          packageResource: ${{ parameters.packageResource }}
+          packageArtifact: ${{ parameters.packageArtifact }}
+          packageFile: ${{ parameters.packageFile }}
+          url: ${{ parameters.url }}
+          timeoutInMinutes: ${{ parameters.timeoutInMinutes }}
+          preDeploymentSteps: ${{ parameters.preDeploymentSteps }}
+          postDeploymentSteps: ${{ parameters.postDeploymentSteps }}
+          env: ${{ parameters.env }}
+          ${{ if parameters.config }}:
+            config: ${{ parameters.config }}
+      - ${{ each job in parameters.postDeploymentJobs }}:
+        - ${{ each pair in job }}:          
+            ${{ if ne(pair.key, 'dependsOn') }}:
+              ${{ pair.key }}: ${{ pair.value }}
+          dependsOn:                        
+            - DeployPackage
+            - ${{ if job.dependsOn }}:
+              - ${{ job.dependsOn }}

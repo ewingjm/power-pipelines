@@ -1,0 +1,59 @@
+parameters:
+  - name: message
+    displayName: Message
+    type: string
+  - name: author
+    displayName: Author
+    type: string
+    default: ''
+  - name: authorEmail
+    displayName: Author email
+    type: string
+    default: ''
+  - name: commitAll
+    displayName: Commit all
+    type: boolean
+    default: true
+  - name: stepName
+    displayName: Step name
+    type: string
+    default: ''
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Commit changes
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+steps:
+  - powershell: |
+      $author = if ($env:COMMITCHANGES_AUTHOR) { $env:COMMITCHANGES_AUTHOR } else { $env:BUILD_REQUESTEDFOR }
+      $authorEmail = if ($env:COMMITCHANGES_AUTHOREMAIL) { $env:COMMITCHANGES_AUTHOREMAIL } else { $env:BUILD_REQUESTEDFOREMAIL }
+      Write-Host "Committing '$env:COMMITCHANGES_MESSAGE' as $author ($authorEmail)."
+      
+      if ([bool]::Parse($env:COMMITCHANGES_COMMITALL)) {
+        Write-Host "Committing all changes."
+        git add -A
+      }
+
+      git diff-index --quiet HEAD
+      $pendingChanges = $LASTEXITCODE -ne 0
+
+      if ($pendingChanges) {
+        git -c "user.name='$author'" -c "user.email='$authorEmail'" commit -m $env:COMMITCHANGES_MESSAGE
+        exit 0
+      } 
+
+      Write-Host "No changes detected to commit."
+      exit 0
+    displayName: ${{ parameters.stepDisplayName }}
+    ${{ if parameters.stepName }}:
+      name: ${{ parameters.stepName }}
+    condition: ${{ parameters.condition }}
+    env:
+      COMMITCHANGES_MESSAGE: ${{ parameters.message }}
+      COMMITCHANGES_AUTHOR: ${{ parameters.author }}
+      COMMITCHANGES_AUTHOREMAIL: ${{ parameters.authorEmail }}
+      COMMITCHANGES_COMMITALL: ${{ parameters.commitAll }}

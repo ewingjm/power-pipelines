@@ -1,0 +1,118 @@
+parameters:
+  - name: ref
+    displayName: Ref
+    type: string
+  - name: solutionSourcePattern
+    displayName: Solution source pattern
+    type: string
+  - name: webResourceSourcePatterns
+    displayName: Web resource source patterns
+    type: object
+    default: []
+  - name: assemblySourcePatterns
+    displayName: Assembly source patterns
+    type: object
+    default: []
+  - name: repository
+    displayName: Repository
+    type: string
+    default: $(Build.SourcesDirectory)
+
+steps:
+  - powershell: |
+      $webResourceSourcePatterns = $env:GETSOLUTIONUPDATES_PATTERNS_WEBRESOURCES -split "," -replace "\\", "/"
+      $assemblySourcePatterns = $env:GETSOLUTIONUPDATES_PATTERNS_ASSEMBLIES -split "," -replace "\\", "/"
+
+      $solutionMetadataDirectories = Get-ChildItem -Path $env:GETSOLUTIONUPDATES_PATTERNS_SOLUTIONMETADATA -Directory
+      $repositoryRoot = git rev-parse --show-toplevel
+      $frontendPatterns = $solutionMetadataDirectories | ForEach-Object { 
+        $solutionMetadataPath = $_.FullName -replace "\\", "/"
+        
+        return @(		
+          "$solutionMetadataPath/AppModules/*", 
+          "$solutionMetadataPath/AppModuleSiteMaps/*", 
+          "$solutionMetadataPath/Entities/*", 
+          "$solutionMetadataPath/OptionSets/*", 
+          "$solutionMetadataPath/Other/Solution.xml", 
+          "$solutionMetadataPath/Reports/*", 
+          "$solutionMetadataPath/WebResources/*",
+          "$solutionMetadataPath/CanvasApps/*",
+          "$solutionMetadataPath/appactions/*"
+        )
+      }
+
+      if ($WebResourceSourcePatterns) {
+        $frontendPatterns += ($WebResourceSourcePatterns | ForEach-Object { "$repositoryRoot/$_" })
+      }
+
+      $backendPatterns = $solutionMetadataDirectories | ForEach-Object {
+        $solutionMetadataPath = $_.FullName -replace "\\", "/"
+        
+        return @(
+          "$solutionMetadataPath/PluginAssemblies/*", 
+          "$solutionMetadataPath/Roles/*", 
+          "$solutionMetadataPath/SdkMessageProcessingSteps/*", 
+          "$solutionMetadataPath/Workflows/*", 
+          "$solutionMetadataPath/Other/Relationships/*", 
+          "$solutionMetadataPath/Other/Customizations/*", 
+          "$solutionMetadataPath/Other/EntityMaps.xml", 
+          "$solutionMetadataPath/Other/FieldSecurityProfiles.xml", 
+          "$solutionMetadataPath/Entities/*/Entity.xml"
+        )
+      }
+
+      if ($AssemblySourcePatterns) {
+        $backendPatterns += ($AssemblySourcePatterns | ForEach-Object { "$repositoryRoot/$_" })
+      }
+      
+      if ($env:GETSOLUTIONUPDATES_REF -match '^[0-9a-f]{7}$') {
+        Write-Host "Comparing HEAD with $env:GETSOLUTIONUPDATES_REF."
+        $updatedFiles = git diff --name-only "HEAD..$env:GETSOLUTIONUPDATES_REF" | ForEach-Object { "$repositoryRoot/$_" }
+      }
+      else {
+        Write-Host "Comparing HEAD with origin/$env:GETSOLUTIONUPDATES_REF."
+        $updatedFiles = git diff --name-only "HEAD..origin/$env:GETSOLUTIONUPDATES_REF" | ForEach-Object { "$repositoryRoot/$_" }
+      }
+
+      Write-Host "The following files have been updated:`n"
+      $updatedFiles | ForEach-Object { Write-Host " - $_" }
+
+      Write-Host "`nChecking for front-end changes matching the following:`n"
+      $frontendPatterns | ForEach-Object { Write-Host " - $_" }
+      $frontendUpdated = ($updatedFiles | ForEach-Object {
+        foreach ($pattern in $frontendPatterns) {
+          if ($_ -like $pattern) {
+            return $true
+          }
+        }
+
+        return $false
+      }) -contains $true
+
+      Write-Host "`nChecking for back-end changes matching the following:`n"
+      $backendPatterns | ForEach-Object { Write-Host " - $_" }
+      $backendUpdated = ($updatedFiles | ForEach-Object {
+        foreach ($pattern in $backendPatterns) {
+          if ($_ -like $pattern) {
+            return $true
+          }
+        }
+
+        return $false
+      }) -contains $true
+
+      Write-Host "`nFront-end components updated: $frontendUpdated."
+      Write-Host "Back-end components updated: $backendUpdated.`n"
+
+      Write-Host "##vso[task.setvariable variable=Solution.IsUpdated;isOutput=true]$($frontEndUpdated -or $backEndUpdated)"
+      Write-Host "##vso[task.setvariable variable=Frontend.IsUpdated;isOutput=true]$frontEndUpdated"
+      Write-Host "##vso[task.setvariable variable=Backend.IsUpdated;isOutput=true]$backEndUpdated"
+    displayName: Get solution updates
+    name: GetSolutionUpdates
+    workingDirectory: ${{ parameters.repository }}
+    env:
+      GETSOLUTIONUPDATES_REF: ${{ parameters.ref }}
+      GETSOLUTIONUPDATES_PATTERNS_SOLUTIONMETADATA: ${{ parameters.solutionSourcePattern }}
+      GETSOLUTIONUPDATES_PATTERNS_WEBRESOURCES: ${{ join(',', parameters.webResourceSourcePatterns) }}
+      GETSOLUTIONUPDATES_PATTERNS_ASSEMBLIES: ${{ join(',', parameters.assemblySourcePatterns) }}
+  

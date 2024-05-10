@@ -1,0 +1,140 @@
+parameters:
+  - name: solution
+    displayName: Solution
+    type: string
+  - name: outputDirectory
+    displayName: Output directory
+    type: string
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: commitMessage
+    displayName: Commit message
+    type: string
+  - name: branch
+    displayName: Branch
+    type: string
+  - name: url
+    displayName: URL
+    type: string
+    default: ''
+  - name: postUnpackSteps
+    displayName: Post-unpack steps
+    type: stepList
+    default: []
+  - name: mapFile
+    displayName: Map File
+    type: string
+    default: ''
+  - name: jobName
+    displayName: Job name
+    type: string
+    default: SyncSolutionMetadata
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: ${{ format('Sync {0}', parameters.solution) }}
+    dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    variables:
+      SyncSolutionMetadata.Solution: ${{ parameters.solution }}
+      SyncSolutionMetadata.OutputDirectory: $(Build.ArtifactStagingDirectory)/SyncSolutionMetadata
+      SyncSolutionMetadata.UnmanagedOutputFileName: ${{ format('{0}.zip', parameters.solution) }}
+      SyncSolutionMetadata.ManagedOutputFileName: ${{ format('{0}_managed.zip', parameters.solution) }}
+      SyncSolutionMetadata.UnmanagedOutputFile: $(SyncSolutionMetadata.OutputDirectory)/$(SyncSolutionMetadata.UnmanagedOutputFileName)
+      SyncSolutionMetadata.ManagedOutputFile: $(SyncSolutionMetadata.OutputDirectory)/$(SyncSolutionMetadata.ManagedOutputFileName)
+      SyncSolutionMetadata.MetadataOutputDirectory: ${{ parameters.outputDirectory }}
+      SyncSolutionMetadata.CommitMessage: ${{ parameters.commitMessage }}
+      SyncSolutionMetadata.Branch: ${{ parameters.branch }}
+      ${{ if parameters.url }}:
+        BuildTools.EnvironmentUrl: ${{ parameters.url }}
+    steps:
+      - checkout: self
+        clean: true
+        persistCredentials: true
+        fetchDepth: 0
+      - template: ../../git/steps/check-branch-exists-steps.yml
+        parameters:
+          branch: $(SyncSolutionMetadata.Branch)
+          errorOnNotExists: true
+      - template: ../../git/steps/checkout-branch-steps.yml
+        parameters:
+          stepDisplayName: Checkout $(SyncSolutionMetadata.Branch)
+          branch: $(SyncSolutionMetadata.Branch)
+      - task: PowerPlatformToolInstaller@2
+        displayName: Install Power Platform Build Tools
+      - task: PowerPlatformExportSolution@2
+        displayName: Export managed solution
+        inputs:
+          authenticationType: PowerPlatformSPN
+          PowerPlatformSPN: ${{ parameters.serviceConnection }}
+          SolutionName: $(SyncSolutionMetadata.Solution)
+          Managed: true
+          SolutionOutputFile: $(SyncSolutionMetadata.ManagedOutputFile)
+      - task: PowerPlatformExportSolution@2
+        displayName: Export unmanaged solution
+        inputs:
+          authenticationType: PowerPlatformSPN
+          PowerPlatformSPN: ${{ parameters.serviceConnection }}
+          SolutionName: $(SyncSolutionMetadata.Solution)
+          Managed: false
+          SolutionOutputFile: $(SyncSolutionMetadata.UnmanagedOutputFile)
+      - task: DeleteFiles@1
+        displayName: Delete existing metadata
+        inputs:
+          SourceFolder: $(SyncSolutionMetadata.MetadataOutputDirectory)
+          Contents: '**/*'
+          RemoveDotFiles: true
+          RemoveSourceFolder: false
+      - powershell: |
+          Write-Host "Searching for solution .cdsproj."
+          $currentPath = $env:SYNCSOLUTIONMETADATA_METADATAOUTPUTDIRECTORY
+
+          while ($currentPath -ne "") {
+              Write-Host "Searching in $currentPath."
+              $cdsprojFile = Get-ChildItem -Path $currentPath -Filter "*.cdsproj" -File | Select-Object -First 1
+              if ($cdsprojFile -ne $null) {
+                  Write-Host "Found $($cdsprojFile.FullName)."
+                  Write-Host "##vso[task.setvariable variable=$env:SyncSolutionMetadata.SolutionProject;]$cdsprojFile.FullName"
+                  return
+              }
+
+              $currentPath = Get-Item $currentPath | Split-Path -Parent
+          }
+
+          throw "Unable to find a .cdsproj for the $env:SYNCSOLUTIONMETADATA_SOLUTION solution."
+        displayName: Find solution project
+      - task: DotNetCoreCLI@2
+        displayName: Build package
+        inputs:
+          command: publish
+          projects: $(SyncSolutionMetadata.SolutionProject)
+          publishWebProjects: false
+          zipAfterPublish: false
+          modifyOutputPath: false
+          arguments: >
+            -c Release
+      - task: PowerPlatformUnpackSolution@2
+        displayName: Unpack solution metadata
+        inputs:
+          SolutionTargetFolder: $(SyncSolutionMetadata.MetadataOutputDirectory)
+          SolutionType: Both
+          SolutionInputFile: $(SyncSolutionMetadata.UnmanagedOutputFile)
+          MapFile: ${{ parameters.mapFile }}
+          OverwriteFiles: true
+          ProcessCanvasApps: true
+      - ${{ if gt(length(parameters.postUnpackSteps), 0) }}:
+        - ${{ parameters.postUnpackSteps }}
+      - template: ../../git/steps/commit-changes-steps.yml
+        parameters:
+          message: $(SyncSolutionMetadata.CommitMessage)
+      - template: ../../git/steps/push-commits-steps.yml
+    
