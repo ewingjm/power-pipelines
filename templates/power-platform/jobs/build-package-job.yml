@@ -84,7 +84,7 @@ jobs:
           displayName: Run unit tests
           inputs:
             command: test
-            arguments: --collect:"XPlat Code Coverage" --results-directory "$(Build.ArtifactStagingDirectory)/TestResults"
+            arguments: --collect:"XPlat Code Coverage"
             publishTestResults: true
             projects: $(BuildPackage.UnitTests.Project)
         - task: PublishCodeCoverageResults@2
