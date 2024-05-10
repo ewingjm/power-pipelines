@@ -91,7 +91,7 @@ jobs:
           displayName: Publish code coverage report
           inputs:
             failIfCoverageEmpty: false
-            summaryFileLocation: $(Build.ArtifactStagingDirectory)/TestResults/**/coverage.cobertura.xml
+            summaryFileLocation: $(Agent.TempDirectory)/**/coverage.cobertura.xml
       - ${{ each additionalProject in parameters.additionalProjects }}:
         - task: DotNetCoreCLI@2
           displayName: Build ${{ additionalProject.artifactName }}
