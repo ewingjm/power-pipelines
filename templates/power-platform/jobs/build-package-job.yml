@@ -121,7 +121,7 @@ jobs:
             arguments: >
               -c Debug
               -o "$(BuildPackage.SolutionOutputDirectory)"
-              /p:SolutionVersionStrategy=none
+              /p:SolutionVersionStrategy=''
       - ${{ parameters.postBuildSteps }}
       - powershell: |
           $fileName = [System.IO.Path]::GetFileNameWithoutExtension($env:BUILDPACKAGE_PACKAGEPROJECT)
