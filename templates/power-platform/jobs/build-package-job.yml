@@ -104,24 +104,24 @@ jobs:
         - publish: $(Build.ArtifactStagingDirectory))/${{ additionalProject.artifactName }}
           artifact: ${{ additionalProject.artifactName }}
           displayName: Publish ${{ additionalProject.artifactName }}
-      - ${{ if parameters.unmanagedSolution }}:
-        - powershell: |
-            Write-Host "##vso[task.setvariable variable=BuildPackage.UnmanagedSolutionProject]$(Get-ChildItem "$env:BUILDPACKAGE_UNMANAGEDSOLUTION.cdsproj" -File -Recurse | Select-Object -ExpandProperty FullName)"
-          displayName: Find $(BuildPackage.UnmanagedSolution) project 
-        - powershell: |
-            $solution = Get-ChildItem "$env:BUILDPACKAGE_UNMANAGEDSOLUTION.zip" -File -Recurse
-            Write-Host "##vso[task.setvariable variable=BuildPackage.SolutionOutputDirectory]$($solution.Directory.FullName)/"
-          displayName: Find $(BuildPackage.UnmanagedSolution) output location 
-          workingDirectory: $(BuildPackage.OutputDirectory)
-        - task: DotNetCoreCLI@2
-          displayName: Build unmanaged $(BuildPackage.UnmanagedSolution) solution
-          inputs:
-            command: build
-            projects: $(BuildPackage.UnmanagedSolutionProject)
-            arguments: >
-              -c Debug
-              -o "$(BuildPackage.SolutionOutputDirectory)"
-              /p:SolutionVersionStrategy=''
+      # - ${{ if parameters.unmanagedSolution }}:
+      #   - powershell: |
+      #       Write-Host "##vso[task.setvariable variable=BuildPackage.UnmanagedSolutionProject]$(Get-ChildItem "$env:BUILDPACKAGE_UNMANAGEDSOLUTION.cdsproj" -File -Recurse | Select-Object -ExpandProperty FullName)"
+      #     displayName: Find $(BuildPackage.UnmanagedSolution) project 
+      #   - powershell: |
+      #       $solution = Get-ChildItem "$env:BUILDPACKAGE_UNMANAGEDSOLUTION.zip" -File -Recurse
+      #       Write-Host "##vso[task.setvariable variable=BuildPackage.SolutionOutputDirectory]$($solution.Directory.FullName)/"
+      #     displayName: Find $(BuildPackage.UnmanagedSolution) output location 
+      #     workingDirectory: $(BuildPackage.OutputDirectory)
+      #   - task: DotNetCoreCLI@2
+      #     displayName: Build unmanaged $(BuildPackage.UnmanagedSolution) solution
+      #     inputs:
+      #       command: build
+      #       projects: $(BuildPackage.UnmanagedSolutionProject)
+      #       arguments: >
+      #         -c Debug
+      #         -o "$(BuildPackage.SolutionOutputDirectory)"
+      #         /p:SolutionVersionStrategy=''
       - ${{ parameters.postBuildSteps }}
       - powershell: |
           $fileName = [System.IO.Path]::GetFileNameWithoutExtension($env:BUILDPACKAGE_PACKAGEPROJECT)
