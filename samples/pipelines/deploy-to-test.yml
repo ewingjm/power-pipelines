@@ -24,8 +24,6 @@ resources:
     - pipeline: marketing
       source: power-platform-marketing
       branch: main
-
-resources:
   repositories:
     - repository: power-pipelines
       name: ewingjm/power-pipelines

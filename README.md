@@ -15,6 +15,7 @@ Azure Pipelines templates that provide an end-to-end DevOps framework for Power 
     - [Build package](#build-package)
     - [Deploy packages](#deploy-packages)
     - [Delete work item environments](#delete-work-item-environments)
+    - [Sync bulk deletes](#sync-bulk-deletes)
   - [Contributing](#contributing)
 
 
@@ -47,7 +48,7 @@ This section details the pipeline templates that are available.
 
 Creates a development environment for a given solution within a package. 
 
-[Example](./samplespipelines/create-development-environment.yml)
+[Example](./samples/pipelines/create-development-environment.yml)
 
 | Parameter                              | Description                                                                                                                                                                                                                                |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -78,7 +79,7 @@ Note that all solutions within the package (if any) other than the given solutio
 
 Syncs the metadata for a given solution.
 
-[Example](./samplespipelines/deploy-to-test.yml)
+[Example](./samples/pipelines/deploy-to-test.yml)
 
 | Parameter                      | Description                                                                                 |
 | ------------------------------ | ------------------------------------------------------------------------------------------- |
@@ -103,7 +104,7 @@ Note that any changes to the unpack process will also need changes to the pack p
 
 A validation pipeline template that can build and deploy changes in a pull request to an environment.
 
-[Example](./samplespipelines/validate-package.yml)
+[Example](./samples/pipelines/validate-package.yml)
 
 | Parameter                                 | Description                                                                                                                                                                                                                                 |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -161,7 +162,7 @@ To refer to the output variables created by patterns passed with `additionalPatt
 
 Builds a Package Deployer package (i.e. a package project that has been created using the Power Apps CLI) and analyses the solutions with the Solution Checker. 
 
-[Example](./samplespipelines/build-package.yml)
+[Example](./samples/pipelines/build-package.yml)
 
 | Parameter                       | Description                                                                                              |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -193,7 +194,7 @@ At the time of writing, the packing of solution projects created via the Power A
 
 Deploys one or more Package Deployer packages to an environment.
 
-[Example](./samplespipelines/deploy-to-test.yml)
+[Example](./samples/pipelines/deploy-to-test.yml)
 
 | Parameter                         | Description                                                                                                                                                         |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -224,7 +225,7 @@ Please note that the version generated for the runs of any pipelines that extend
 
 Deletes environments (created by pipelines extending other templates in this repository) that are linked to work items in a given category state.
 
-[Example](./samplespipelines/delete-inactive-work-item-environments.yml)
+[Example](./samples/pipelines/delete-inactive-work-item-environments.yml)
 
 | Parameter                | Description                                                                                                                                                                                                                                |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -254,6 +255,25 @@ metadata:
 ```
 
 This will ensure that only environments created by the [Create development environment](#create-development-environment) pipeline template from a pipeline in the `contoso-sales` repository are deleted.
+
+### Sync bulk deletes
+
+[`sync-bulk-deletes-pipeline.yml`](./pipelines/sync-bulk-deletes-pipeline.yml)
+
+Syncs recurring bulk delete jobs from source control to an environment.
+
+[Example (pipeline)](./samples/pipelines/sync-bulk-deletes.yml)
+
+[Example (bulk delete definition)](./samples/bulk-deletes/Emails%20older%20than%2030%20days.yml)
+
+| Parameter          | Description                                                                                                                                                                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| serviceConnection  | The Power Platform service connection to use. This should be a [management app](https://learn.microsoft.com/en-us/power-platform/admin/powershell-create-service-principal#registering-an-admin-management-application) service principal. |
+| environment        | The environment for the deployment job.                                                                                                                                                                                                    |
+| sourceFolder       | The folder that contains the bulk delete definition files.                                                                                                                                                                                 |
+| url **[optional]** | The URL of the environment to sync to. Defaults to the URL in the service connection.                                                                                                                                                    |
+
+You must manually increment the `version` property of a bulk delete definition when any updates are made.
 
 ## Contributing
 
