@@ -20,22 +20,22 @@ jobs:
     variables:
       ${{ if parameters.url }}:
         BuildTools.EnvironmentUrl: ${{ parameters.url }}
-      SyncBulkDelete.BulkDeleteFolder: $(Build.SourcesDirectory)/${{ parameters.sourceFolder }}
-      SyncBulkDelete.FilesFound: false
+      SyncBulkDeletes.SourceDirectory: $(Build.SourcesDirectory)/${{ parameters.sourceFolder }}
+      SyncBulkDeletes.FilesFound: false
     strategy:
       runOnce:
         deploy:
           steps:
             - checkout: self
             - powershell: |
-                Write-Host "Checking for the existence of $env:SYNCBULKDELETE_BULKDELETEFOLDER."
-                $filesFound = Test-Path $env:SYNCBULKDELETE_BULKDELETEFOLDER
-                Write-Host "##vso[task.setvariable variable=SyncBulkDelete.FilesFound;]$filesFound"
+                Write-Host "Checking for the existence of $env:SYNCBULKDELETES_BULKDELETEFOLDER."
+                $filesFound = Test-Path $env:SYNCBULKDELETES_BULKDELETEFOLDER
+                Write-Host "##vso[task.setvariable variable=SyncBulkDeletes.FilesFound;]$filesFound"
               displayName: Check for files
             - task: PowerPlatformSetConnectionVariables@2
               name: PowerPlatformSetConnectionVariables
               displayName: Set connection variables
-              condition: and(succeeded(), eq(variables['SyncBulkDelete.FilesFound'], 'true'))
+              condition: and(succeeded(), eq(variables['SyncBulkDeletes.FilesFound'], 'true'))
               inputs:
                 authenticationType: PowerPlatformSPN
                 PowerPlatformSPN: ${{ parameters.serviceConnection }}
@@ -243,7 +243,7 @@ jobs:
 
                 Write-Host "Finished syncing."
               displayName: Sync bulk deletes
-              condition: and(succeeded(), eq(variables['SyncBulkDelete.FilesFound'], 'true'))
+              condition: and(succeeded(), eq(variables['SyncBulkDeletes.FilesFound'], 'true'))
               env:
                 SYNCBULKDELETES_URL: $(BuildTools.EnvironmentUrl)
                 SYNCBULKDELETES_TENANTID: $(PowerPlatformSetConnectionVariables.BuildTools.TenantId)
