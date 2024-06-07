@@ -28,8 +28,8 @@ jobs:
           steps:
             - checkout: self
             - powershell: |
-                Write-Host "Checking for the existence of $env:SYNCBULKDELETES_BULKDELETEFOLDER."
-                $filesFound = Test-Path $env:SYNCBULKDELETES_BULKDELETEFOLDER
+                Write-Host "Checking for the existence of $env:SYNCBULKDELETES_SOURCEDIRECTORY."
+                $filesFound = Test-Path $env:SYNCBULKDELETES_SOURCEDIRECTORY
                 Write-Host "##vso[task.setvariable variable=SyncBulkDeletes.FilesFound;]$filesFound"
               displayName: Check for files
             - task: PowerPlatformSetConnectionVariables@2
