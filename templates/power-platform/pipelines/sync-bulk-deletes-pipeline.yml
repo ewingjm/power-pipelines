@@ -245,8 +245,8 @@ jobs:
               displayName: Sync bulk deletes
               condition: and(succeeded(), eq(variables['SyncBulkDelete.FilesFound'], 'true'))
               env:
-                SYNCBULKDELETE_URL: $(BuildTools.EnvironmentUrl)
-                SYNCBULKDELETE_TENANTID: $(PowerPlatformSetConnectionVariables.BuildTools.TenantId)
-                SYNCBULKDELETE_CLIENTID: $(PowerPlatformSetConnectionVariables.BuildTools.ApplicationId)
-                SYNCBULKDELETE_CLIENTSECRET: $(PowerPlatformSetConnectionVariables.BuildTools.ClientSecret)
+                SYNCBULKDELETES_URL: $(BuildTools.EnvironmentUrl)
+                SYNCBULKDELETES_TENANTID: $(PowerPlatformSetConnectionVariables.BuildTools.TenantId)
+                SYNCBULKDELETES_CLIENTID: $(PowerPlatformSetConnectionVariables.BuildTools.ApplicationId)
+                SYNCBULKDELETES_CLIENTSECRET: $(PowerPlatformSetConnectionVariables.BuildTools.ClientSecret)
   
