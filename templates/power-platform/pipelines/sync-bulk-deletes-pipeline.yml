@@ -170,7 +170,7 @@ jobs:
 
                 Write-Host "Retrieving existing bulk delete jobs."
                 $existingJobs = Invoke-RestMethod `
-                    -Uri "$($baseUri)bulkdeleteoperations?`$select=name&`$filter=isrecurring eq true and contains(name,'(synced from Git)')&`$orderby=name asc" `
+                    -Uri "$($baseUri)bulkdeleteoperations?`$select=name&`$filter=statecode eq 1 and isrecurring eq true and contains(name,'(synced from Git)')&`$orderby=name asc" `
                     -Method Get `
                     -Headers $headers | Select-Object -ExpandProperty value
 
@@ -215,7 +215,7 @@ jobs:
                     $matchedDefinitions += $matchedDefinition
                 }
 
-                $unmatchedDefinitions = Compare-Object $yamlDefinitions $matchedDefinitions -PassThru | Where-Object { $_.SideIndicator -eq '<=' }
+                $unmatchedDefinitions = $yamlDefinitions | Where-Object { $matchedDefinitions.Contains($_) -eq $false }
                 Write-Host "There are $($unmatchedDefinitions.Length) YAML files unmatched to jobs."
 
                 foreach ($yamlDefinition in $unmatchedDefinitions) {
@@ -236,7 +236,7 @@ jobs:
                             -Headers $headers
                     }
                     catch {
-                        Write-Host "Error creating $($yamlDefinition.name): $($_.Exception.Message)"
+                        Write-Host "Error creating $($yamlDefinition.name): $($_.ErrorDetails.Message)"
                         Write-Host "##vso[task.logissue type=warning]Error creating $($yamlDefinition.name): $($_.Exception.Message)"
                     }
                 }
