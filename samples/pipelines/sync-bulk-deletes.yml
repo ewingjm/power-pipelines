@@ -1,0 +1,25 @@
+trigger:
+  branches:
+    include:
+      - master
+  paths:
+    include:
+      - bulkdeletes/*
+
+pool:
+  vmImage: windows-latest
+
+resources:
+  repositories:
+    - repository: power-pipelines
+      name: ewingjm/power-pipelines
+      ref: refs/heads/main 
+      type: github
+      endpoint: your-service-endpoint
+
+extends:
+  template: templates/power-platform/pipelines/sync-bulk-deletes-pipeline.yml@power-pipelines
+  parameters:
+    serviceConnection: Contoso - Test
+    environment: Test
+    sourceFolder: samples/bulk-deletes

@@ -1,0 +1,12 @@
+version: 1
+pattern: DAILY
+interval: 1
+startTime: 03:00:00
+query: |
+  <fetch>
+    <entity name="email">
+      <filter type="and">
+        <condition attribute="createdon" operator="olderthan-x-days" value="30"/>
+      </filter>
+    </entity>
+  </fetch>

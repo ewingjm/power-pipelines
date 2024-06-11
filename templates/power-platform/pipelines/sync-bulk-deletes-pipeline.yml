@@ -1,0 +1,251 @@
+parameters:
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: environment
+    displayName: Environment
+    type: string
+  - name: sourceFolder
+    displayName: Source folder
+    type: string
+  - name: url
+    displayName: URL
+    type: string
+    default: ''
+
+jobs:
+  - deployment: SyncBulkDeletes
+    displayName: Sync ${{ parameters.environment }} bulk deletes
+    environment: ${{ parameters.environment }}
+    variables:
+      ${{ if parameters.url }}:
+        BuildTools.EnvironmentUrl: ${{ parameters.url }}
+      SyncBulkDeletes.SourceDirectory: $(Build.SourcesDirectory)/${{ parameters.sourceFolder }}
+      SyncBulkDeletes.FilesFound: false
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - checkout: self
+            - powershell: |
+                Write-Host "Checking for the existence of $env:SYNCBULKDELETES_SOURCEDIRECTORY."
+                $filesFound = Test-Path $env:SYNCBULKDELETES_SOURCEDIRECTORY
+                Write-Host "##vso[task.setvariable variable=SyncBulkDeletes.FilesFound;]$filesFound"
+              displayName: Check for files
+            - task: PowerPlatformSetConnectionVariables@2
+              name: PowerPlatformSetConnectionVariables
+              displayName: Set connection variables
+              condition: and(succeeded(), eq(variables['SyncBulkDeletes.FilesFound'], 'true'))
+              inputs:
+                authenticationType: PowerPlatformSPN
+                PowerPlatformSPN: ${{ parameters.serviceConnection }}
+            - powershell: |
+                if (-not (Get-Module -Name powershell-yaml -ErrorAction SilentlyContinue)) {
+                    Install-Module -Name powershell-yaml -Scope CurrentUser -Force
+                }
+
+                function Get-AuthResponse {
+                    param (
+                        [Parameter(Mandatory)]
+                        [string]$TenantId,
+                        [Parameter(Mandatory)]
+                        [string]$ClientId,
+                        [Parameter(Mandatory)]
+                        [string]$ClientSecret,
+                        [Parameter(Mandatory)]
+                        [string]$Url
+                    )
+                    $tokenEndpoint = "https://login.microsoftonline.com/$TenantId/oauth2/v2.0/token"
+
+                    $authBody = 
+                    @{
+                        client_id     = $ClientId;
+                        client_secret = $ClientSecret;    
+                        scope         = "$($Url)/.default"    
+                        grant_type    = 'client_credentials'
+                    }
+
+                    $authParams = 
+                    @{
+                        URI         = $tokenEndpoint
+                        Method      = 'POST'
+                        ContentType = 'application/x-www-form-urlencoded'
+                        Body        = $authBody
+                    }
+
+                    return Invoke-RestMethod @authParams -ErrorAction Stop
+                }
+
+                function Get-RecurringBulkDeleteJobName {
+                    param (
+                        [Parameter(Mandatory)]
+                        [string]$Name,
+                        [Parameter(Mandatory)]
+                        [string]$Version
+                    )
+
+                    $versionTag = "[v$Version]"
+                    $syncTag = "(synced from Git)"
+
+                    return "$Name $versionTag $syncTag"
+                }
+
+                function Remove-RecurringBulkDeleteJob {
+                    param (
+                        [Parameter(Mandatory)]
+                        [string]$BulkDeleteOperationId
+                    )
+                    Invoke-RestMethod `
+                        -Uri "$($baseUri)bulkdeleteoperations($BulkDeleteOperationId)" `
+                        -Method Delete `
+                        -Headers $headers
+                }
+
+                function New-RecurringBulkDeleteJob {
+                    param (
+                        [string]$JobName,
+                        [string]$FetchXml,
+                        [string]$Pattern,
+                        [string]$StartTime,
+                        [pscustomobject]$Headers
+                    )
+                    # Convert FetchXML to QueryExpression using FetchXmlToQueryExpression API
+                    $queryExpression = Invoke-RestMethod `
+                        -Method GET `
+                        -Uri "$baseUri/FetchXmlToQueryExpression(FetchXml=@FetchXmlquery)?@FetchXmlquery='$FetchXml'" `
+                        -Headers $Headers
+
+                    $query = $queryExpression.Query | ConvertTo-Json -Depth 100
+                    
+                    # FetchXML conversion API doesn't return number values for query in correct format for Query Expression. Exception when trying to pass integers to API without "" to create jobs
+                    # Regular expression pattern to match "Value": followed by a number. Append quotation marks to any whole numbers after "Value":
+                    $patternValue = '"Value"\s*:\s*(\d+)'
+                    
+                    # Append "" around any numbers after "Value":
+                    $query = $query -replace $patternValue, '"Value" : "$1"'
+                    
+                    # Add square brackets for format that API is expecting
+                    $querySet = "[" + $query + "]"
+                    
+                    # Build the payload by adding on job details after the query array
+                    $payload = $querySet += ",
+                            `"`JobName`"`: `"$JobName`",
+                            `"`SendEmailNotification`"`: false,
+                            `"`RecurrencePattern`"`: `"$Pattern`",
+                            `"`StartDateTime`"`: `"$StartTime`",
+                            `"`ToRecipients`"`: [],
+                            `"`CCRecipients`"`: []"
+                    
+                    # Append {} for JSON string and remove any unnecessary whitespace for payload for correct formatting to make BulkDelete API call
+                    $payload = "{ `"`QuerySet`"`:" + $payload + "}"
+                    $payload = "$payload"
+                    $payload = $payload -replace '\s*:\s*', ':' -replace ',\s*', ','
+                    
+                    $job = Invoke-RestMethod `
+                        -Uri "$baseUri/BulkDelete" `
+                        -Method 'POST' `
+                        -Headers $Headers `
+                        -Body $payload 
+
+                    Write-Host "Recurring bulk delete job successfuly synced for $($JobName). Job ID: $($job.JobId)."
+                }
+
+                $authResponse = Get-AuthResponse -TenantId $env:SYNCBULKDELETES_TENANTID -ClientId $env:SYNCBULKDELETES_CLIENTID -ClientSecret $env:SYNCBULKDELETES_CLIENTSECRET -Url $env:SYNCBULKDELETES_URL
+
+                $baseUri = "$env:SYNCBULKDELETES_URL/api/data/v9.2/"
+                $headers = @{
+                    "Authorization" = "$($authResponse.token_type) $($authResponse.access_token)"
+                    "Content-Type"  = "application/json"
+                }
+
+                if (!(Test-Path $env:SYNCBULKDELETES_SOURCEDIRECTORY)) {
+                    throw "Unable to find $env:SYNCBULKDELETES_SOURCEDIRECTORY."
+                }
+
+                Write-Host "Syncing recurring bulk delete jobs located in $env:SYNCBULKDELETES_SOURCEDIRECTORY."
+                $yamlFiles = Get-ChildItem -Path $env:SYNCBULKDELETES_SOURCEDIRECTORY -File -Recurse | Where-Object { 
+                    $_.Extension -eq '.yml' -or $_.Extension -eq '.yaml' 
+                }
+                Write-Host "$($yamlFiles.Count) bulk delete job definitions found in $env:SYNCBULKDELETES_SOURCEDIRECTORY."
+
+                Write-Host "Retrieving existing bulk delete jobs."
+                $existingJobs = Invoke-RestMethod `
+                    -Uri "$($baseUri)bulkdeleteoperations?`$select=name&`$filter=statecode eq 1 and isrecurring eq true and contains(name,'(synced from Git)')&`$orderby=name asc" `
+                    -Method Get `
+                    -Headers $headers | Select-Object -ExpandProperty value
+
+                if ($existingJobs) {
+                    Write-Host "The following jobs have been synced on the environment:"
+                    $existingJobs | Format-Table
+                }
+
+                Write-Host "$($existingJobs.Count) bulk delete jobs found on environment."
+
+                $yamlDefinitions = $yamlFiles | ForEach-Object {             
+                    $definition = Get-Content -Path $_.FullName -Raw | ConvertFrom-Yaml
+                    $definition.name = $_.BaseName
+
+                    return $definition
+                }
+
+                $matchedDefinitions = @()
+                foreach ($existingJob in $existingJobs) {
+                    $matchedDefinition = $yamlDefinitions | Where-Object { 
+                        $yamlJobName = Get-RecurringBulkDeleteJobName -Name $_.name -Version $_.version.ToString()
+
+                        return $existingJob.name -eq $yamlJobName
+                    }
+
+                    if (!$matchedDefinition) {
+                        Write-Host "A YAML definition was not found for $($existingJob.name). Deleting."
+                        
+                        try {
+                            Remove-RecurringBulkDeleteJob -BulkDeleteOperationId $existingJob.bulkdeleteoperationid
+                            Write-Host "$($currentJob.name) with ID $bulkdeleteOperationId has been deleted from Dataverse."
+                        }
+                        catch {
+                            Write-Host "Error deleting $($existingJob.name): $($_.Exception.Message)"
+                            Write-Host "##vso[task.logissue type=warning]Error deleting $($existingJob.name): $($_.Exception.Message)"
+                        }
+
+                        continue
+                    }
+
+                    Write-Host "$($existingJob.name) has been matched to $($matchedDefinition.name)."
+                    $matchedDefinitions += $matchedDefinition
+                }
+
+                $unmatchedDefinitions = $yamlDefinitions | Where-Object { $matchedDefinitions.Contains($_) -eq $false }
+                Write-Host "There are $($unmatchedDefinitions.Length) YAML files unmatched to jobs."
+
+                foreach ($yamlDefinition in $unmatchedDefinitions) {
+                    Write-Host "Processing $($yamlDefinition.name)."
+                    
+                    try {
+                        $jobName = Get-RecurringBulkDeleteJobName -Name $yamlDefinition.name -Version $yamlDefinition.version
+                        $pattern = "FREQ=" + $yamlDefinition.pattern + ";INTERVAL=" + $yamlDefinition.interval
+                        $startTimeSpan = [TimeSpan]::ParseExact($yamlDefinition.startTime, 'hh\:mm\:ss', $null)
+                        $startTime = (Get-Date).AddDays(1).Date.Add($startTimeSpan).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+                        $query = $yamlDefinition.query
+
+                        New-RecurringBulkDeleteJob `
+                            -JobName $jobName `
+                            -FetchXml $query `
+                            -Pattern $pattern `
+                            -StartTime $startTime `
+                            -Headers $headers
+                    }
+                    catch {
+                        Write-Host "##vso[task.logissue type=warning]Error creating $($yamlDefinition.name): $($_.ErrorDetails.Message)"
+                    }
+                }
+
+                Write-Host "Finished syncing."
+              displayName: Sync bulk deletes
+              condition: and(succeeded(), eq(variables['SyncBulkDeletes.FilesFound'], 'true'))
+              env:
+                SYNCBULKDELETES_URL: $(BuildTools.EnvironmentUrl)
+                SYNCBULKDELETES_TENANTID: $(PowerPlatformSetConnectionVariables.BuildTools.TenantId)
+                SYNCBULKDELETES_CLIENTID: $(PowerPlatformSetConnectionVariables.BuildTools.ApplicationId)
+                SYNCBULKDELETES_CLIENTSECRET: $(PowerPlatformSetConnectionVariables.BuildTools.ClientSecret)
+  
