@@ -236,8 +236,7 @@ jobs:
                             -Headers $headers
                     }
                     catch {
-                        Write-Host "Error creating $($yamlDefinition.name): $($_.ErrorDetails.Message)"
-                        Write-Host "##vso[task.logissue type=warning]Error creating $($yamlDefinition.name): $($_.Exception.Message)"
+                        Write-Host "##vso[task.logissue type=warning]Error creating $($yamlDefinition.name): $($_.ErrorDetails.Message)"
                     }
                 }
 
