@@ -58,7 +58,8 @@ Creates a development environment for a given solution within a package.
 | packageProject                         | The path to the Package Deployer package project created via the Power Apps CLI.                                                                                                                                                           |
 | solution                               | The unique name of the solution to provision the development environment for.                                                                                                                                                              |
 | serviceConnection                      | The Power Platform service connection to use. This should be a [management app](https://learn.microsoft.com/en-us/power-platform/admin/powershell-create-service-principal#registering-an-admin-management-application) service principal. |
-| securityGroupId                        | The ID of the security group to assign to the environment. Users in this group will be given admin access.                                                                                                                                 |
+| securityGroupId                        | The ID of a security group to associate with the environment.                                                                                                                                                                              |
+| adminSecurityGroupId                   | The ID of a security group to assign to the environment with the 'System Administrator' role.                                                                                                                                              |
 | prepareEnvironmentJobs **[optional]**  | Additional jobs that should be ran after the environment is provisioned but prior to the deployment. These jobs have access to the `BuildTools.EnvironmentUrl` and `BuildTools.EnvironmentId` variables that point to the new environment. |
 | finaliseEnvironmentJobs **[optional]** | Additional jobs that should be ran after the environment is deployed to. These jobs have access to the `BuildTools.EnvironmentUrl` and `BuildTools.EnvironmentId` variables that point to the new environment.                             |
 | templates **[optional]**               | Refers to the `AppsTemplate` parameter of the [Create Environment](https://learn.microsoft.com/en-us/power-platform/alm/devops-build-tool-tasks#power-platform-create-environment) task in the Power Platform Build Tools.                 |
@@ -96,7 +97,7 @@ Syncs the metadata for a given solution.
 The `postUnpackSteps` parameter can be used to extend the extract process. The Solution Packager alone is not always sufficient to avoid recurrent conflicts with pull requests. 
 For example, pull requests updating the same solution(s) will frequently generate conflicts that are difficult to resolve around the `MissingDependencies` elements of the _Solution.xml_. 
 A step [template](./steps/split-missing-dependencies-steps.yml) has been created to further unpack the missing dependencies into their own individual files. This makes conflicts much easier to resolve.
-Note that any changes to the unpack process will also need changes to the pack process. Refer to the _pack missing dependencies_ sample [README.md](./samplespack-missing-dependencies/README.md)
+Note that any changes to the unpack process will also need changes to the pack process. Refer to the _pack missing dependencies_ sample [README.md](./samples/pack-missing-dependencies/README.md)
 
 ### Validate package
 
@@ -115,7 +116,8 @@ A validation pipeline template that can build and deploy changes in a pull reque
 | domainNamePrefix                          | The domain name prefix for the environment. Additional metadata will be automatically appended to the domain name.                                                                                                                          |
 | solutionSourcePattern                     | File pattern to identify when an update to solution metadata occurs. Supports `*` as a wildcard.                                                                                                                                            |
 | packageSourcePatterns                     | File patterns to identify when an update to the package template occurs. Supports `*` as a wildcard.                                                                                                                                        |
-| securityGroupId                           | The ID of the security group to assign to the validation environment. Users in this group will be given admin access.                                                                                                                       |
+| securityGroupId                           | The ID of a security group to associate with the environment.                                                                                                                                                                               |
+| adminSecurityGroupId                      | The ID of a security group to assign to the environment with the 'System Administrator' role.                                                                                                                                               |
 | filesToAnalyse **[optional]**             | File pattern to identify solutions to check with the Solution Checker. Defaults to all '**/*.zip'.                                                                                                                                          |
 | webResourceSourcePatterns **[optional]**  | File patterns to identify when an update to web resources occurs. Supports `*` as a wildcard.                                                                                                                                               |
 | assemblySourcePatterns **[optional]**     | File patterns to identify when an update to plug-in assembly occurs. Supports `*` as a wildcard.                                                                                                                                            |
@@ -186,7 +188,7 @@ patch-version-bump-message: "(build|chore|ci|docs|fix|perf|refactor|revert|style
 
 This template does **not** handle the versioning of your Dataverse solutions. It will only version the package as a whole. For information on how to version your solutions, refer to [PowerVersion](https://github.com/ewingjm/power-version)
 
-At the time of writing, the packing of solution projects created via the Power Apps CLI requires a separate MappingFile.xml to the unpack operation. This is due to the fact that the pack operation happens on a copy of the metadata folder that has been copied to the intermediate output path (_obj_). Refer to the _transform mapping directives_ sample [README.md](./samplestransform-mapping-directives/README.md) for a solution to this problem.
+At the time of writing, the packing of solution projects created via the Power Apps CLI requires a separate MappingFile.xml to the unpack operation. This is due to the fact that the pack operation happens on a copy of the metadata folder that has been copied to the intermediate output path (_obj_). Refer to the _transform mapping directives_ sample [README.md](./samples/transform-mapping-directives/README.md) for a solution to this problem.
 
 ### Deploy packages
 

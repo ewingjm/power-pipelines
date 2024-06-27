@@ -20,6 +20,9 @@ parameters:
   - name: securityGroupId
     displayName: Security group ID
     type: string
+  - name: adminSecurityGroupId
+    displayName: Developer security group ID
+    type: string
   - name: preDeploymentSteps
     displayName: Optional pre-deployment steps
     type: stepList
@@ -179,8 +182,8 @@ stages:
       - template: ../jobs/assign-group-access-job.yml
         parameters:
           serviceConnection: ${{ parameters.serviceConnection }}
-          securityGroupId: ${{ parameters.securityGroupId }}
-          teamName: Developers
+          securityGroupId: ${{ parameters.adminSecurityGroupId }}
+          teamName: Admins
           roleName: System Administrator
       - ${{ parameters.prepareEnvironmentJobs }}
   - template: ../stages/deploy-package-stage.yml

@@ -15,9 +15,6 @@ steps:
         throw "Unable to locate an ImportConfig.xml within the package directory."
       }
 
-      Write-Host "Import config located at $($config.FullName)."
-      Remove-Item $config.FullName -Force
-
       Write-Host "Replacing with import config file at $env:USEIMPORTCONFIG_CONFIGFILE."
       Move-Item -Path $env:USEIMPORTCONFIG_CONFIGFILE -Destination $config.FullName -Force
     workingDirectory: ${{ parameters.packageDirectory }}
