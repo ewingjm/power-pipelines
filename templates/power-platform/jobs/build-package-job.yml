@@ -54,11 +54,11 @@ jobs:
     steps:
       - checkout: self
         fetchDepth: 0
-      - task: gitversion/setup@0
+      - task: gitversion/setup@3
         displayName: Install GitVersion
         inputs:
           versionSpec: '5.x'
-      - task: gitversion/execute@0
+      - task: gitversion/execute@3
         displayName: Execute GitVersion
         inputs:
           useConfigFile: true
