@@ -28,7 +28,7 @@ steps:
       Write-Host "`tURL: $env:ADDHYPERLINK_URL"
       Write-Host "`tComment: $env:ADDHYPERLINK_COMMENT"      
 
-      az boards work-item update --id $env:ADDHYPERLINK_WORKITEMID --discussion $env:ADDHYPERLINK_HISTORYCOMMENT --org $env:SYSTEM_COLLECTIONURI
+      az boards work-item update --id $env:ADDHYPERLINK_WORKITEMID --discussion $env:ADDHYPERLINK_HISTORYCOMMENT --org $env:SYSTEM_COLLECTIONURI -project $(System.TeamProject)
       
       Write-Host "Work item link added successfully."      
     displayName: ${{ parameters.stepDisplayName }}
