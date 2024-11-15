@@ -136,7 +136,7 @@ jobs:
           SolutionInputFile: $(SyncSolutionMetadata.UnmanagedOutputFile)
           MapFile: ${{ parameters.mapFile }}
           OverwriteFiles: true
-          ProcessCanvasApps: true
+          #ProcessCanvasApps: true
       - ${{ if gt(length(parameters.postUnpackSteps), 0) }}:
         - ${{ parameters.postUnpackSteps }}
       - template: ../../git/steps/commit-changes-steps.yml
