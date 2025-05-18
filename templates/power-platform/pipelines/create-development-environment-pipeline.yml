@@ -188,7 +188,8 @@ stages:
       dependsOn: 
         - BuildPackage
         - CreateEnvironment
-        - PrepareEnvironment
+        - ${{ if gt(length(parameters.prepareEnvironmentJobs), 0) }}:
+          - PrepareEnvironment
       environment: Power Platform - Ephemeral
       serviceConnection: ${{ parameters.serviceConnection }}
       packageArtifact: package
