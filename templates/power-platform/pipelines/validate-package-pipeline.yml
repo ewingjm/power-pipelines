@@ -24,9 +24,11 @@ parameters:
   - name: securityGroupId
     displayName: Security group ID
     type: string
+    default: ''
   - name: adminSecurityGroupId
     displayName: Developer security group ID
     type: string
+    default: ''
   - name: additionalProjects
     displayName: Additionals projects
     type: object
@@ -220,23 +222,24 @@ stages:
                   <div><br></div>
                   <div><b>URL</b>: <a href="$(SetWorkItemHyperlink.Url)">$(SetWorkItemHyperlink.Url)</a></div>
                   <div><b>Maker URL</b>: <a href="https://make.powerapps.com/environments/$(SetWorkItemHyperlink.EnvironmentId)">https://make.powerapps.com/environments/$(SetWorkItemHyperlink.EnvironmentId)</a></div>
-  - stage: PrepareEnvironment
-    displayName: Prepare environment
-    condition: and(not(canceled()), succeeded('CreateEnvironment'))
-    dependsOn: 
-      - AnalyseUpdates
-      - CreateEnvironment
-    variables:
-      BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
-      BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
-    jobs: 
-      - template: ../jobs/assign-group-access-job.yml
-        parameters:
-          serviceConnection: ${{ parameters.serviceConnection }}
-          securityGroupId: ${{ parameters.adminSecurityGroupId }}
-          teamName: Admins
-          roleName: System Administrator
-      - ${{ parameters.prepareEnvironmentJobs }}
+  - ${{ if gt(length(parameters.prepareEnvironmentJobs), 0) }}:
+    - stage: PrepareEnvironment
+      displayName: Prepare environment
+      condition: and(not(canceled()), succeeded('CreateEnvironment'))
+      dependsOn: 
+        - AnalyseUpdates
+        - CreateEnvironment
+      variables:
+        BuildTools.EnvironmentUrl: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
+        BuildTools.EnvironmentId: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentId'] ]
+      jobs: 
+        # - template: ../jobs/assign-group-access-job.yml
+        #   parameters:
+        #     serviceConnection: ${{ parameters.serviceConnection }}
+        #     securityGroupId: ${{ parameters.adminSecurityGroupId }}
+        #     teamName: Admins
+        #     roleName: System Administrator
+        - ${{ parameters.prepareEnvironmentJobs }}
   - template: ../stages/deploy-package-stage.yml
     parameters:
       condition: and(not(canceled()), succeeded('PrepareEnvironment'))
@@ -244,7 +247,8 @@ stages:
         - AnalyseUpdates
         - BuildPackage
         - CreateEnvironment
-        - PrepareEnvironment
+        - ${{ if gt(length(parameters.prepareEnvironmentJobs), 0) }}:
+          - PrepareEnvironment
       environment: Power Platform - Ephemeral
       serviceConnection: ${{ parameters.serviceConnection }}
       packageArtifact: package
