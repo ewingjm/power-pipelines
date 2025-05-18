@@ -35,7 +35,7 @@ parameters:
   - name: sku
     displayName: SKU
     type: string
-    default: Sandbox
+    default: Developer
   - name: stageName
     displayName: Stage name
     type: string
