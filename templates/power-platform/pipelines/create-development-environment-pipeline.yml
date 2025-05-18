@@ -20,9 +20,11 @@ parameters:
   - name: securityGroupId
     displayName: Security group ID
     type: string
+    default: ''
   - name: adminSecurityGroupId
     displayName: Developer security group ID
     type: string
+    default: ''
   - name: preDeploymentSteps
     displayName: Optional pre-deployment steps
     type: stepList
