@@ -31,7 +31,7 @@ parameters:
   - name: sku
     displayName: SKU
     type: string
-    default: Sandbox
+    default: Developer
   - name: securityGroupId
     displayName: Security group ID
     type: string
