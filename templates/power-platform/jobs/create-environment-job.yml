@@ -86,6 +86,7 @@ jobs:
           DisplayName: $(CalculateEnvironmentName.DisplayName)
           DomainName: $(CalculateEnvironmentName.DomainName)
           EnvironmentSku: $(CreateEnvironment.SKU)
+          User: ewingjm@m365devtenant.onmicrosoft.com
           AppsTemplate: $(CreateEnvironment.Templates)
           LocationName: $(CreateEnvironment.Location)
           LanguageName: $(CreateEnvironment.Language)
