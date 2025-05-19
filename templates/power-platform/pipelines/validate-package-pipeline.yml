@@ -242,7 +242,7 @@ stages:
         - ${{ parameters.prepareEnvironmentJobs }}
   - template: ../stages/deploy-package-stage.yml
     parameters:
-      condition: and(not(canceled()), succeeded('PrepareEnvironment'))
+      condition: succeeded()
       dependsOn: 
         - AnalyseUpdates
         - BuildPackage
