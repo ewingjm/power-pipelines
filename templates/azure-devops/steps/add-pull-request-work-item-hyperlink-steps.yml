@@ -69,7 +69,7 @@ steps:
         }
 
         $request = ConvertTo-Json -Depth 4 -InputObject $patchDocument -Compress
-        $response = Invoke-WebRequest -Method Patch -Headers $requestHeaders -Uri "$endpointUrl/$($_)?api-version=7.0" -Body $request
+        $response = Invoke-WebRequest -Method Patch -Headers $requestHeaders -Uri "$endpointUrl/$($_)?api-version=7.0" -Body $request -UseBasicParsing
         
         if ($response.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
           Write-Error $response.StatusDescription
