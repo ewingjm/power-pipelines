@@ -57,7 +57,7 @@ steps:
       }
       $requestBody = ConvertTo-Json -Depth 4 -InputObject $patchDocument -Compress
       
-      $response = Invoke-WebRequest -Method Patch -Headers $requestHeaders -Uri $endpointUrl -Body $requestBody
+      $response = Invoke-WebRequest -Method Patch -Headers $requestHeaders -Uri $endpointUrl -Body $requestBody -UseBasicParsing
       
       if ($response.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
         Write-Error $response.StatusDescription
