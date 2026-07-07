@@ -59,6 +59,14 @@ parameters:
     displayName: Package Deployer config file
     type: string
     default: ''
+  - name: templateEnvironmentUrl
+    displayName: Template environment URL
+    type: string
+    default: ''
+  - name: templateEnvironmentCopyType
+    displayName: Template environment copy type
+    type: string
+    default: MinimalCopy
   - name: branch
     displayName: Branch
     type: string
@@ -99,6 +107,8 @@ stages:
       location: ${{ parameters.location }}
       language: ${{ parameters.language }}
       currency: ${{ parameters.currency }}
+      templateEnvironmentUrl: ${{ parameters.templateEnvironmentUrl }}
+      templateEnvironmentCopyType: ${{ parameters.templateEnvironmentCopyType }}
       postCreateJobs:
         - job: SetWorkItemHyperlink
           displayName: Set work item hyperlink
