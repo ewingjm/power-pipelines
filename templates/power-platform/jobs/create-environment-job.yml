@@ -103,10 +103,11 @@ jobs:
       - task: PowerPlatformCopyEnvironment@2
         displayName: Copy from template environment
         condition: and(succeeded(), ne(variables['CreateEnvironment.TemplateEnvironmentUrl'], ''))
+        env:
+          BuildTools.EnvironmentUrl: $(CreateEnvironment.TemplateEnvironmentUrl)
         inputs:
           authenticationType: PowerPlatformSPN
           PowerPlatformSPN: ${{ parameters.serviceConnection }}
-          PowerPlatformEnvironment: $(CreateEnvironment.TemplateEnvironmentUrl)
           TargetEnvironmentUrl: $(PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl)
           CopyType: $(CreateEnvironment.TemplateEnvironmentCopyType)
           SkipAuditData: true
