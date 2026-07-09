@@ -102,10 +102,10 @@ jobs:
           CurrencyName: $(CreateEnvironment.Currency)
       - task: PowerPlatformCopyEnvironment@2
         displayName: Copy from template environment
-        condition: and(succeeded(), ne(variables['CreateEnvironment.TemplateEnvironmentServiceConnection'], ''))
+        condition: and(succeeded(), ne('${{ parameters.templateEnvironmentServiceConnection }}', ''))
         inputs:
           authenticationType: PowerPlatformSPN
-          PowerPlatformSPN: $(CreateEnvironment.TemplateEnvironmentServiceConnection)
+          PowerPlatformSPN: ${{ parameters.templateEnvironmentServiceConnection }}
           TargetEnvironmentUrl: $(PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl)
           CopyType: $(CreateEnvironment.TemplateEnvironmentCopyType)
           SkipAuditData: true
