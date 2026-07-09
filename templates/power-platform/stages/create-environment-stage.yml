@@ -32,8 +32,8 @@ parameters:
     displayName: Currency
     type: string
     default: GBP
-  - name: templateEnvironmentUrl
-    displayName: Template environment URL
+  - name: templateEnvironmentServiceConnection
+    displayName: Template environment service connection
     type: string
     default: ''
   - name: templateEnvironmentCopyType
@@ -78,7 +78,7 @@ stages:
           location: ${{ parameters.location }}
           language: ${{ parameters.language }}
           currency: ${{ parameters.currency }}
-          templateEnvironmentUrl: ${{ parameters.templateEnvironmentUrl }}
+          templateEnvironmentServiceConnection: ${{ parameters.templateEnvironmentServiceConnection }}
           templateEnvironmentCopyType: ${{ parameters.templateEnvironmentCopyType }}
           sku: ${{ parameters.sku }}
           securityGroupId: ${{ parameters.securityGroupId }}
