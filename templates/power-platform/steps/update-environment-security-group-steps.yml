@@ -46,8 +46,8 @@ steps:
         }
         catch {
           $message = $_.Exception.Message
-          if ($attempt -lt $maxAttempts -and $message -match 'OperationNotStartable|active lifecycle operation') {
-            Write-Warning "The environment is still busy. Retrying in $sleepSeconds seconds (attempt $attempt of $maxAttempts)."
+          if ($attempt -lt $maxAttempts -and $message -match 'OperationNotStartable|active lifecycle operation|\(409\) Conflict|The remote server returned an error: \(409\) Conflict') {
+            Write-Warning "The environment is still busy or returned a 409 Conflict. Retrying in $sleepSeconds seconds (attempt $attempt of $maxAttempts)."
             Start-Sleep -Seconds $sleepSeconds
             continue
           }
