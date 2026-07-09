@@ -110,6 +110,8 @@ jobs:
           TargetEnvironmentUrl: $(PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl)
           CopyType: $(CreateEnvironment.TemplateEnvironmentCopyType)
           SkipAuditData: true
+          OverrideFriendlyName: true
+          FriendlyName: $(CalculateEnvironmentName.DisplayName)
       - template: ../steps/update-environment-security-group-steps.yml
         parameters:
           serviceConnection: ${{ parameters.serviceConnection }}
