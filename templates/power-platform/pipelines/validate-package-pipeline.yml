@@ -67,8 +67,8 @@ parameters:
     displayName: Package Deployer config file
     type: string
     default: ''
-  - name: templateEnvironmentServiceConnection
-    displayName: Template environment service connection
+  - name: templateEnvironmentUrl
+    displayName: Template environment URL
     type: string
     default: ''
   - name: templateEnvironmentCopyType
@@ -199,7 +199,7 @@ stages:
       location: ${{ parameters.location }}
       language: ${{ parameters.language }}
       currency: ${{ parameters.currency }}
-      templateEnvironmentServiceConnection: ${{ parameters.templateEnvironmentServiceConnection }}
+      templateEnvironmentUrl: ${{ parameters.templateEnvironmentUrl }}
       templateEnvironmentCopyType: ${{ parameters.templateEnvironmentCopyType }}
       postCreateJobs:
         - job: SetWorkItemHyperlink

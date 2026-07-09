@@ -28,8 +28,8 @@ parameters:
     displayName: Currency
     type: string
     default: GBP
-  - name: templateEnvironmentServiceConnection
-    displayName: Template environment service connection
+  - name: templateEnvironmentUrl
+    displayName: Template environment URL
     type: string
     default: ''
   - name: templateEnvironmentCopyType
@@ -65,7 +65,7 @@ jobs:
       CreateEnvironment.Location: ${{ parameters.location }}
       CreateEnvironment.Language: ${{ parameters.language }}
       CreateEnvironment.Currency: ${{ parameters.currency }}
-      CreateEnvironment.TemplateEnvironmentServiceConnection: ${{ parameters.templateEnvironmentServiceConnection }}
+      CreateEnvironment.TemplateEnvironmentUrl: ${{ parameters.templateEnvironmentUrl }}
       CreateEnvironment.TemplateEnvironmentCopyType: ${{ parameters.templateEnvironmentCopyType }}
       CreateEnvironment.SKU: ${{ parameters.sku }}
       ${{ if parameters.securityGroupId }}:
@@ -102,10 +102,11 @@ jobs:
           CurrencyName: $(CreateEnvironment.Currency)
       - task: PowerPlatformCopyEnvironment@2
         displayName: Copy from template environment
-        condition: and(succeeded(), ne('${{ parameters.templateEnvironmentServiceConnection }}', ''))
+        condition: and(succeeded(), ne(variables['CreateEnvironment.TemplateEnvironmentUrl'], ''))
         inputs:
           authenticationType: PowerPlatformSPN
-          PowerPlatformSPN: ${{ parameters.templateEnvironmentServiceConnection }}
+          PowerPlatformSPN: ${{ parameters.serviceConnection }}
+          Environment: $(CreateEnvironment.TemplateEnvironmentUrl)
           TargetEnvironmentUrl: $(PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl)
           CopyType: $(CreateEnvironment.TemplateEnvironmentCopyType)
           SkipAuditData: true
