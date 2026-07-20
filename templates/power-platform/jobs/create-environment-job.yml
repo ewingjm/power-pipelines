@@ -28,6 +28,14 @@ parameters:
     displayName: Currency
     type: string
     default: GBP
+  - name: templateEnvironmentUrl
+    displayName: Template environment URL
+    type: string
+    default: ''
+  - name: templateEnvironmentCopyType
+    displayName: Template environment copy type
+    type: string
+    default: MinimalCopy
   - name: sku
     displayName: SKU
     type: string
@@ -56,7 +64,9 @@ jobs:
       CreateEnvironment.Templates: ${{ parameters.templates }}
       CreateEnvironment.Location: ${{ parameters.location }}
       CreateEnvironment.Language: ${{ parameters.language }}
-      CreateEnvironment.Currency: ${{ parameters.currency }}  
+      CreateEnvironment.Currency: ${{ parameters.currency }}
+      CreateEnvironment.TemplateEnvironmentUrl: ${{ parameters.templateEnvironmentUrl }}
+      CreateEnvironment.TemplateEnvironmentCopyType: ${{ parameters.templateEnvironmentCopyType }}
       CreateEnvironment.SKU: ${{ parameters.sku }}
       ${{ if parameters.securityGroupId }}:
         CreateEnvironment.SecurityGroupId: ${{ parameters.securityGroupId }}
@@ -90,6 +100,18 @@ jobs:
           LocationName: $(CreateEnvironment.Location)
           LanguageName: $(CreateEnvironment.Language)
           CurrencyName: $(CreateEnvironment.Currency)
+      - task: PowerPlatformCopyEnvironment@2
+        displayName: Copy from template environment
+        condition: and(succeeded(), ne(variables['CreateEnvironment.TemplateEnvironmentUrl'], ''))
+        inputs:
+          authenticationType: PowerPlatformSPN
+          PowerPlatformSPN: ${{ parameters.serviceConnection }}
+          Environment: $(CreateEnvironment.TemplateEnvironmentUrl)
+          TargetEnvironmentUrl: $(PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl)
+          CopyType: $(CreateEnvironment.TemplateEnvironmentCopyType)
+          SkipAuditData: true
+          OverrideFriendlyName: true
+          FriendlyName: $(CalculateEnvironmentName.DisplayName)
       - template: ../steps/update-environment-security-group-steps.yml
         parameters:
           serviceConnection: ${{ parameters.serviceConnection }}

@@ -17,6 +17,10 @@ parameters:
   - name: serviceConnection
     displayName: Service connection
     type: string
+  - name: deployServiceConnection
+    displayName: Deploy service connection
+    type: string
+    default: ''
   - name: securityGroupId
     displayName: Security group ID
     type: string
@@ -59,6 +63,14 @@ parameters:
     displayName: Package Deployer config file
     type: string
     default: ''
+  - name: templateEnvironmentUrl
+    displayName: Template environment URL
+    type: string
+    default: ''
+  - name: templateEnvironmentCopyType
+    displayName: Template environment copy type
+    type: string
+    default: MinimalCopy
   - name: branch
     displayName: Branch
     type: string
@@ -99,6 +111,8 @@ stages:
       location: ${{ parameters.location }}
       language: ${{ parameters.language }}
       currency: ${{ parameters.currency }}
+      templateEnvironmentUrl: ${{ parameters.templateEnvironmentUrl }}
+      templateEnvironmentCopyType: ${{ parameters.templateEnvironmentCopyType }}
       postCreateJobs:
         - job: SetWorkItemHyperlink
           displayName: Set work item hyperlink
@@ -193,7 +207,7 @@ stages:
         - CreateEnvironment
         - PrepareEnvironment
       environment: Power Platform - Ephemeral
-      serviceConnection: ${{ parameters.serviceConnection }}
+      serviceConnection: ${{ coalesce(parameters.deployServiceConnection, parameters.serviceConnection) }}
       packageArtifact: package
       packageFile: $[ stageDependencies.BuildPackage.BuildPackage.outputs['GetPackageFile.PackageFile'] ]
       url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]

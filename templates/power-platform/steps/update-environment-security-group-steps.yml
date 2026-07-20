@@ -25,16 +25,36 @@ steps:
       Add-PowerAppsAccount -TenantID $env:UPDATESECURITYGROUP_MANAGEMENTAPP_TENANTID -ApplicationId $env:UPDATESECURITYGROUP_MANAGEMENTAPP_APPLICATIONID -ClientSecret $env:UPDATESECURITYGROUP_MANAGEMENTAPP_CLIENTSECRET
       
       Write-Host "Assigning security group."
-      InvokeApi -Method PATCH `
-        -Route "https://api.bap.microsoft.com/providers/Microsoft.BusinessAppPlatform/scopes/admin/environments/$($env:UPDATESECURITYGROUP_ENVIRONMENTID)?api-version=2020-06-01" `
-        -ThrowOnFailure `
-        -Body @{ 
-          properties = @{ 
-            linkedEnvironmentMetadata = @{ 
-              securityGroupId = $env:UPDATESECURITYGROUP_SECURITYGROUPID 
+      $maxAttempts = 60
+      $sleepSeconds = 10
+
+      for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        try {
+          InvokeApi -Method PATCH `
+            -Route "https://api.bap.microsoft.com/providers/Microsoft.BusinessAppPlatform/scopes/admin/environments/$($env:UPDATESECURITYGROUP_ENVIRONMENTID)?api-version=2020-06-01" `
+            -ThrowOnFailure `
+            -Body @{ 
+              properties = @{ 
+                linkedEnvironmentMetadata = @{ 
+                  securityGroupId = $env:UPDATESECURITYGROUP_SECURITYGROUPID 
+                }
+              }
             }
-          }
+
+          Write-Host "Security group assigned successfully."
+          break
         }
+        catch {
+          $message = $_.Exception.Message
+          if ($attempt -lt $maxAttempts -and $message -match 'OperationNotStartable|active lifecycle operation|\(409\) Conflict|The remote server returned an error: \(409\) Conflict') {
+            Write-Warning "The environment is still busy or returned a 409 Conflict. Retrying in $sleepSeconds seconds (attempt $attempt of $maxAttempts)."
+            Start-Sleep -Seconds $sleepSeconds
+            continue
+          }
+
+          throw "Failed to assign security group after $attempt attempt(s). $message"
+        }
+      }
     displayName: Set security group on environment
     env:
       UPDATESECURITYGROUP_SECURITYGROUPID: ${{ parameters.securityGroupId }}
