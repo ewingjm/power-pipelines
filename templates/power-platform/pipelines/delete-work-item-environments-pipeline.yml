@@ -233,36 +233,59 @@ stages:
 
               Write-Host "Found $($environments.Count) total environments."
 
-              $environmentsToDelete | ForEach-Object {
-                  $environmentToDelete = $_
-                  $matchingEnvironment = $environments | Where-Object { 
-                      ([System.Uri]$_.Internal.properties.linkedEnvironmentMetadata.instanceUrl).Host -eq ([System.Uri]$environmentToDelete.url).Host }
+              # Group environments to delete by work item ID to batch operations
+              $environmentsByWorkItem = $environmentsToDelete | Group-Object -Property workItemId
 
-                  if ($matchingEnvironment) {
-                      Write-Host "Deleting $($matchingEnvironment.DisplayName)"
-                      try {
-                          Remove-AdminPowerAppEnvironment -EnvironmentName $matchingEnvironment.EnvironmentName | Out-Null
-                          Write-Host "Deleted environment for $($_.workItemId)."
-                      }
-                      catch {
-                          Write-Warning "Failed to delete $($matchingEnvironment.DisplayName)."
-                          Write-Warning $_
-                          return
+              $environmentsByWorkItem | ForEach-Object {
+                  $workItemGroup = $_
+                  $workItemId = $workItemGroup.Name
+                  $environmentsForWorkItem = $workItemGroup.Group
+
+                  # Process all environments for this work item to delete all hyperlinks at once
+                  foreach ($environmentToDelete in $environmentsForWorkItem) {
+                      $matchingEnvironment = $environments | Where-Object { 
+                          ([System.Uri]$_.Internal.properties.linkedEnvironmentMetadata.instanceUrl).Host -eq ([System.Uri]$environmentToDelete.url).Host }
+
+                      if ($matchingEnvironment) {
+                          Write-Host "Deleting $($matchingEnvironment.DisplayName)"
+                          try {
+                              Remove-AdminPowerAppEnvironment -EnvironmentName $matchingEnvironment.EnvironmentName | Out-Null
+                              Write-Host "Deleted environment for $workItemId."
+                          }
+                          catch {
+                              Write-Warning "Failed to delete $($matchingEnvironment.DisplayName)."
+                              Write-Warning $_
+                              return
+                          }
                       }
                   }
 
-                  $patchDocument = @(
-                      @{
-                          op    = "add"
-                          path  = "/fields/System.History"
-                          value = "<div>Deleted development environment.</div><div><br></div><div><b>URL</b>: <a href=""$($_.url)"">$($_.url)</a></div>"
-                      },
-                      @{
+                  # Build a single PATCH document with all relation removals for this work item
+                  # Sort indices in descending order to avoid index shifting issues
+                  $sortedIndices = $environmentsForWorkItem | Sort-Object -Property linkIndex -Descending | Select-Object -ExpandProperty linkIndex
+                  
+                  $patchDocument = @()
+                  
+                  # Add one history entry for all deletions
+                  $historyValue = "<div>Deleted development environments:</div><div><br></div>"
+                  $environmentsForWorkItem | ForEach-Object {
+                      $historyValue += "<div><b>URL</b>: <a href=""$($_.url)"">$($_.url)</a></div>"
+                  }
+                  
+                  $patchDocument += @{
+                      op    = "add"
+                      path  = "/fields/System.History"
+                      value = $historyValue
+                  }
+                  
+                  # Add all relation removals (in descending index order)
+                  $sortedIndices | ForEach-Object {
+                      $patchDocument += @{
                           op    = "remove"
-                          path  = "/relations/$($_.linkIndex)"
+                          path  = "/relations/$_"
                           value = $null
                       }
-                  )
+                  }
 
                   $deleteRelationParameters = @{
                       Method          = "PATCH"
@@ -270,7 +293,7 @@ stages:
                           "Authorization" = $getProjectParameters.Headers.Authorization
                           "Content-Type"  = "application/json-patch+json"
                       }
-                      Uri             = "$($apiBase)_apis/wit/workitems/$($_.workItemId)?api-version=7.0"
+                      Uri             = "$($apiBase)_apis/wit/workitems/$workItemId?api-version=7.0"
                       Body            = ConvertTo-Json -InputObject $patchDocument -Compress
                       UseBasicParsing = $true
                   }
@@ -280,7 +303,7 @@ stages:
                       Write-Warning $deleteRelationResponse.StatusDescription
                       return
                   }
-                  Write-Host "Deleted work item hyperlink for $($_.workItemId)."
+                  Write-Host "Deleted $($environmentsForWorkItem.Count) work item hyperlink(s) for work item $workItemId."
               }
               Write-Host "Finished processing work items."
             displayName: Delete work item environments
