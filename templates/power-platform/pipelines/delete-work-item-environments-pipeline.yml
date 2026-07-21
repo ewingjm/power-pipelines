@@ -107,7 +107,8 @@ stages:
               $workItemQuery = @"
               SELECT [System.Id] 
               FROM WorkItems 
-              WHERE [System.HyperlinkCount] > 0 
+              WHERE [System.TeamProject] = '$env:SYSTEM_TEAMPROJECT'
+              AND [System.HyperlinkCount] > 0 
               AND ($stateConditions)
               "@
                           
