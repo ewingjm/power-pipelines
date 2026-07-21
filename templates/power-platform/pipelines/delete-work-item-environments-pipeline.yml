@@ -251,8 +251,16 @@ stages:
 
               $environmentsByWorkItem | ForEach-Object {
                   $workItemGroup = $_
-                  $workItemId = [string]$workItemGroup.Name
                   $environmentsForWorkItem = @($workItemGroup.Group)
+                  $workItemId = ([string]$environmentsForWorkItem[0].workItemId).Trim()
+                  
+                  if ([string]::IsNullOrWhiteSpace($workItemId)) {
+                      Write-Warning "Skipping group with null/empty work item ID."
+                      return
+                  }
+                  
+                  Write-Host ""
+                  Write-Host "Processing work item $workItemId ($($environmentsForWorkItem.Count) environment(s) to delete)..."
 
                   # Process all environments for this work item to delete all hyperlinks at once
                   foreach ($environmentToDelete in $environmentsForWorkItem) {
@@ -300,23 +308,27 @@ stages:
                       }
                   }
 
+                  $patchUri = "$($apiBase)_apis/wit/workitems/$($workItemId)?api-version=7.0"
+                  Write-Host "Submitting PATCH request for work item $workItemId ($($sortedIndices.Count) relation(s) to delete)..."
+                  
                   $deleteRelationParameters = @{
                       Method          = "PATCH"
                       Headers         = @{
                           "Authorization" = $getProjectParameters.Headers.Authorization
                           "Content-Type"  = "application/json-patch+json"
                       }
-                      Uri             = "$($apiBase)_apis/wit/workitems/$workItemId?api-version=7.0"
+                      Uri             = $patchUri
                       Body            = ConvertTo-Json -InputObject $patchDocument -Compress
                       UseBasicParsing = $true
                   }
 
                   $deleteRelationResponse = Invoke-WebRequest @deleteRelationParameters
                   if ($deleteRelationResponse.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
+                      Write-Warning "Failed to delete work item hyperlinks for work item $workItemId."
                       Write-Warning $deleteRelationResponse.StatusDescription
                       return
                   }
-                  Write-Host "Deleted $($environmentsForWorkItem.Count) work item hyperlink(s) for work item $workItemId."
+                  Write-Host "✓ Deleted $($environmentsForWorkItem.Count) work item hyperlink(s) for work item $workItemId."
               }
               Write-Host "Finished processing work items."
             displayName: Delete work item environments
