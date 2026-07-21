@@ -163,11 +163,18 @@ stages:
                   $metadataQuery = $env:DELETEENVIRONMENTS_METADATA | ConvertFrom-Json
                   $workItems.value | ForEach-Object {
                       $workItem = $_
+                      $workItemId = $workItem.id
                       [array]$hyperlinksWithComments = $_.relations | Where-Object { $_.rel -eq "Hyperlink" -and $_.attributes.comment -ne $null }
+                      
+                      if ($hyperlinksWithComments.Count -gt 0) {
+                          Write-Host "Analyzing $($hyperlinksWithComments.Count) hyperlink(s) for work item $workItemId..."
+                      }
+                      
+                      $matchedCount = 0
                       $hyperlinksWithComments | ForEach-Object {
                           $relation = $_
                           if (!$relation.attributes.comment) {
-                              Write-Host "No comment associated with $($relation.url) link."
+                              Write-Host "  ✗ No comment metadata: $($relation.url)"
                               return
                           }
 
@@ -175,26 +182,31 @@ stages:
                               $metadata = $relation.attributes.comment | ConvertFrom-Json 
                           }
                           catch [System.ArgumentException] {
-                              Write-Host "Comment associated with $($relation.url) link does not contain valid metadata."
+                              Write-Host "  ✗ Invalid metadata: $($relation.url)"
                               return
                           }
 
                           if (-not(Test-ObjectSubset -Object1 $metadataQuery -Object2 $metadata)) {
-                              Write-Host "`t - Work item $($workItem.id) link to $($relation.url) did not match metadata query."
+                              Write-Host "  ✗ Metadata mismatch: $($relation.url)"
                               return
                           }
 
                           if ($relation.url -notmatch ".*\.crm\d+\.dynamics\.com") {
-                              Write-Host "`t - Work item $($workItem.id) link to $($relation.url) did not contain a valid URL."
+                              Write-Host "  ✗ Invalid CRM URL format: $($relation.url)"
                               return
                           }
 
-                          Write-Host "`t - URL $($relation.url) for work item $($workItem.id) matched metadata query."
+                          Write-Host "  ✓ Matched: $($relation.url)"
+                          $matchedCount++
                           $environmentsToDelete.Add(@{
-                                  workItemId = $workItem.id
+                                  workItemId = $workItemId
                                   url        = $relation.url
                                   linkIndex  = $workItem.relations.IndexOf($relation)
                               }) | Out-Null
+                      }
+                      
+                      if ($hyperlinksWithComments.Count -gt 0) {
+                          Write-Host "  Found $matchedCount matching environment(s) for deletion."
                       }
                   }
               }
