@@ -25,6 +25,7 @@ stages:
           DeleteEnvironments.Metadata: ${{ convertToJson(parameters.metadata) }}
           DeleteEnvironments.CreatedBy: ${{ parameters.createdBy }}
         steps:
+          - checkout: none
           - task: PowerPlatformToolInstaller@2
             displayName: Install Power Platform Build Tools
           - task: PowerPlatformSetConnectionVariables@2
