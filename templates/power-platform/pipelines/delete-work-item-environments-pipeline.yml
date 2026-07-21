@@ -239,8 +239,8 @@ stages:
 
               $environmentsByWorkItem | ForEach-Object {
                   $workItemGroup = $_
-                  $workItemId = $workItemGroup.Name
-                  $environmentsForWorkItem = $workItemGroup.Group
+                  $workItemId = [string]$workItemGroup.Name
+                  $environmentsForWorkItem = @($workItemGroup.Group)
 
                   # Process all environments for this work item to delete all hyperlinks at once
                   foreach ($environmentToDelete in $environmentsForWorkItem) {
@@ -263,7 +263,7 @@ stages:
 
                   # Build a single PATCH document with all relation removals for this work item
                   # Sort indices in descending order to avoid index shifting issues
-                  $sortedIndices = $environmentsForWorkItem | Sort-Object -Property linkIndex -Descending | Select-Object -ExpandProperty linkIndex
+                  $sortedIndices = @($environmentsForWorkItem | Sort-Object -Property linkIndex -Descending | ForEach-Object { $_.linkIndex })
                   
                   $patchDocument = @()
                   
