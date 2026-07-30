@@ -6,10 +6,10 @@ parameters:
     displayName: Group object ID
     type: string
   - name: username
-    displayName: Username
+    displayName: Username (DEPRECATED)
     type: string
   - name: password
-    displayName: Password
+    displayName: Password (DEPRECATED)
     type: string
   - name: tenantID
     displayName: Tenant ID
@@ -23,30 +23,34 @@ parameters:
 
 steps:
   - powershell: |
-      if (!(Get-Module -ListAvailable -Name AzureAD)) { 
-        Install-Module -Name AzureAD -Force -Scope CurrentUser
+      if (!(Get-Module -ListAvailable -Name Microsoft.Graph.Authentication)) { 
+        Install-Module -Name Microsoft.Graph.Authentication -Force -Scope CurrentUser
+      }
+
+      if (!(Get-Module -ListAvailable -Name Microsoft.Graph.Groups)) { 
+        Install-Module -Name Microsoft.Graph.Groups -Force -Scope CurrentUser
       }
       
       if (!(Get-Module -ListAvailable -Name Microsoft.PowerApps.Administration.PowerShell)) { 
-        Install-Module -Name Microsoft.PowerApps.Administration.PowerShell -Force -Scope CurrentUser
+        Install-Module -Name Microsoft.PowerApps.Administration.PowerShell -Force -Scope CurrentUser -MaximumVersion 2.0.194
       }
 
-      Write-Host "Forcing sync of Azure AD users."
+      Write-Host "Forcing sync of Microsoft Entra ID users."
 
       Write-Host "Authenticating as $env:SYNCUSERS_APPLICATIONID."
       Add-PowerAppsAccount -TenantID $env:SYNCUSERS_TENANTID -ApplicationId $env:SYNCUSERS_APPLICATIONID -ClientSecret $env:SYNCUSERS_CLIENTSECRET
 
-      $azureCredentials = [System.Management.Automation.PSCredential]::new($env:SYNCUSERS_USERNAME, (ConvertTo-SecureString $env:SYNCUSERS_PASSWORD -AsPlainText -Force))      
-      
-      Write-Host "Authenticating as $env:SYNCUSERS_USERNAME."
-      Connect-AzureAD -Credential $azureCredentials | Out-Null
+      $clientSecretCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $env:SYNCUSERS_APPLICATIONID, (ConvertTo-SecureString -String $env:SYNCUSERS_CLIENTSECRET -AsPlainText -Force)
 
-      $groupMembers = Get-AzureADGroupMember -ObjectId $env:SYNCUSERS_GROUP -All $true
-      Write-Host "Found $($groupMembers.Count) members to sync in Azure AD group."
+      Write-Host "Connecting to Microsoft Graph as $env:SYNCUSERS_APPLICATIONID."
+      Connect-MgGraph -TenantId $env:SYNCUSERS_TENANTID -ClientSecretCredential $clientSecretCredential | Out-Null
+
+      $groupMembers = Get-MgGroupMember -GroupId $env:SYNCUSERS_GROUP -All -Property "id","displayName"
+      Write-Host "Found $($groupMembers.Count) members to sync in Microsoft Entra ID group."
 
       $groupMembers | ForEach-Object {
-          Write-Host "Syncing $($_.DisplayName)."                  
-          Add-AdminPowerAppsSyncUser -EnvironmentName $env:SYNCUSERS_ENVIRONMENTID -PrincipalObjectId $_.ObjectId | Out-Null
+          Write-Host "Syncing $($_.AdditionalProperties['displayName'])."                  
+          Add-AdminPowerAppsSyncUser -EnvironmentName $env:SYNCUSERS_ENVIRONMENTID -PrincipalObjectId $_.Id | Out-Null
       }
     displayName: Sync users
     env:
@@ -55,5 +59,3 @@ steps:
       SYNCUSERS_CLIENTSECRET: ${{ parameters.clientSecret }}
       SYNCUSERS_ENVIRONMENTID: ${{ parameters.environmentId }}
       SYNCUSERS_GROUP: ${{ parameters.groupObjectId }}
-      SYNCUSERS_USERNAME: ${{ parameters.username }}
-      SYNCUSERS_PASSWORD: ${{ parameters.password }}
