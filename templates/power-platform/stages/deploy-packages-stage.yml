@@ -44,12 +44,17 @@ stages:
       dependsOn: ${{ parameters.dependsOn }}
     condition: ${{ parameters.condition }}
     jobs:
+      - template: ../jobs/backup-environment-job.yml
+        parameters:
+          serviceConnection: ${{ parameters.serviceConnection }}
       - ${{ each package in parameters.packages }}:
         - template: ../jobs/deploy-package-job.yml
           parameters:
             deploymentName: ${{ package.resource }}
             deploymentDisplayName: ${{ format('Deploy {0}', package.resource) }}
-            dependsOn: ${{ package.dependsOn }}
+            dependsOn: 
+              - BackupEnvironment
+              - ${{ package.dependsOn }}
             environment: ${{ parameters.environment }}
             serviceConnection: ${{ coalesce(package.serviceConnection, parameters.serviceConnection) }}
             packageResource: ${{ package.resource }}

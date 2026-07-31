@@ -20,8 +20,9 @@ jobs:
         displayName: Install Power Platform Build Tools
         inputs:
           DefaultVersion: true
-      - task: PowerPlatformBackupEnvironment@0
+      - task: PowerPlatformBackupEnvironment@2
         displayName: Create backup
         inputs:
           authenticationType: PowerPlatformSPN
           PowerPlatformSPN: ${{ parameters.serviceConnection }}
+          BackupLabel: ${{ format('Backup before automated by pipeline {0} ({1})', variables['Build.DefinitionName'], variables['System.DefinitionId']) }}
