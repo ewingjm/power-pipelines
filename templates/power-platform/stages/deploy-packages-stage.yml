@@ -47,6 +47,7 @@ stages:
       - template: ../jobs/backup-environment-job.yml
         parameters:
           serviceConnection: ${{ parameters.serviceConnection }}
+          url: ${{ parameters.url }}
       - ${{ each package in parameters.packages }}:
         - template: ../jobs/deploy-package-job.yml
           parameters:

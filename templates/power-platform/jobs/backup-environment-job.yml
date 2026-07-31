@@ -2,6 +2,10 @@ parameters:
   - name: serviceConnection
     type: string
     displayName: The service connection to use
+  - name: url
+    displayName: URL (optional override)
+    type: string
+    default: ''
   - name: dependsOn
     displayName: Depends on
     type: object
@@ -12,6 +16,9 @@ jobs:
     displayName: Backup environment
     ${{ if parameters.dependsOn }}:
       dependsOn: ${{ parameters.dependsOn }}
+    ${{ if parameters.url }}:
+      variables:
+        BuildTools.EnvironmentUrl: ${{ parameters.url }}
     pool:
       vmImage: windows-latest
     steps:
