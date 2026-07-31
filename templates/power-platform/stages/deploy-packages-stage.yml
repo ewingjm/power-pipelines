@@ -54,8 +54,8 @@ stages:
             deploymentDisplayName: ${{ format('Deploy {0}', package.resource) }}
             dependsOn: 
               - BackupEnvironment
-              - ${{ each package in package.dependsOn }}:
-                - ${{ package }}
+              - ${{ each dependency in package.dependsOn }}:
+                - ${{ dependency }}
             environment: ${{ parameters.environment }}
             serviceConnection: ${{ coalesce(package.serviceConnection, parameters.serviceConnection) }}
             packageResource: ${{ package.resource }}
