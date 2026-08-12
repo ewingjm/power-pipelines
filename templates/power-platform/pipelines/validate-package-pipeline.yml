@@ -119,6 +119,18 @@ parameters:
     displayName: .NET SDK version
     type: string
     default: 6.x
+  - name: githubToken
+    displayName: Optional GitHub token for PR metadata
+    type: string
+    default: ''
+  - name: githubApiBaseUrl
+    displayName: GitHub API base URL
+    type: string
+    default: https://api.github.com
+  - name: workItemReferences
+    displayName: Optional AB# work item references
+    type: string
+    default: ''
 
 stages:
   - template: ../stages/build-package-stage.yml
@@ -132,6 +144,9 @@ stages:
   - template: ../stages/analyse-updates-stage.yml
     parameters: 
       analyseEnvironmentUpdates: true
+      githubToken: ${{ parameters.githubToken }}
+      githubApiBaseUrl: ${{ parameters.githubApiBaseUrl }}
+      workItemReferences: ${{ parameters.workItemReferences }}
       solutionSourcePattern: ${{ parameters.solutionSourcePattern }}
       webResourceSourcePatterns: ${{ parameters.webResourceSourcePatterns }}
       assemblySourcePatterns: ${{ parameters.assemblySourcePatterns }}
@@ -231,6 +246,9 @@ stages:
             - template: ../../azure-devops/steps/add-pull-request-work-item-hyperlink-steps.yml
               parameters:
                 pullRequestId: $(System.PullRequest.PullRequestId)
+                githubToken: ${{ parameters.githubToken }}
+                githubApiBaseUrl: ${{ parameters.githubApiBaseUrl }}
+                workItemReferences: ${{ parameters.workItemReferences }}
                 url: $(SetWorkItemHyperlink.Url)
                 comment: $(SetWorkItemHyperlink.HyperlinkMetadata)
                 historyComment: >
@@ -286,6 +304,9 @@ stages:
             - template: ../../azure-devops/steps/add-pull-request-work-item-comment-steps.yml
               parameters:
                 pullRequestId: $(System.PullRequest.PullRequestId)
+                githubToken: ${{ parameters.githubToken }}
+                githubApiBaseUrl: ${{ parameters.githubApiBaseUrl }}
+                workItemReferences: ${{ parameters.workItemReferences }}
                 comment: >
                   <div>Deployed to validation environment.</div>
                   <div><br></div>
@@ -380,6 +401,9 @@ stages:
             - template: ../../azure-devops/steps/delete-pull-request-work-item-hyperlink-steps.yml
               parameters:
                 pullRequestId: $(System.PullRequest.PullRequestId)
+                githubToken: ${{ parameters.githubToken }}
+                githubApiBaseUrl: ${{ parameters.githubApiBaseUrl }}
+                workItemReferences: ${{ parameters.workItemReferences }}
                 url: $(DeleteWorkItemLinks.Url)
                 historyComment: >
                   <div>Deleted validation environment.</div>

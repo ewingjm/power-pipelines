@@ -26,6 +26,18 @@ parameters:
     displayName: Analyse environment updates
     type: boolean
     default: false
+  - name: githubToken
+    displayName: Optional GitHub token for PR metadata
+    type: string
+    default: ''
+  - name: githubApiBaseUrl
+    displayName: GitHub API base URL
+    type: string
+    default: https://api.github.com
+  - name: workItemReferences
+    displayName: Optional AB# work item references
+    type: string
+    default: ''
   - name: condition
     displayName: Condition
     type: string
@@ -53,6 +65,9 @@ stages:
             - checkout: none
             - template: ../../azure-devops/steps/find-pull-request-work-item-hyperlink-steps.yml
               parameters:
+                githubToken: ${{ parameters.githubToken }}
+                githubApiBaseUrl: ${{ parameters.githubApiBaseUrl }}
+                workItemReferences: ${{ parameters.workItemReferences }}
                 metadataQuery: 
                   pullRequestId: $(System.PullRequest.PullRequestId)
         - template: ../jobs/analyse-updates-job.yml
