@@ -130,6 +130,9 @@ stages:
                   solutionName: ${{ parameters.solution }}
                   runId: $(Build.BuildId)
                   repoId: $(Build.Repository.ID)
+                  repositoryProvider: $(Build.Repository.Provider)
+                  repositoryName: $(Build.Repository.Name)
+                  repositoryUri: $(Build.Repository.Uri)
                   commitHash: $(SetWorkItemHyperlink.CommitHash)
                 variable: SetWorkItemHyperlink.HyperlinkMetadata
             - template: ../../azure-devops/steps/add-work-item-hyperlink-steps.yml
@@ -185,7 +188,19 @@ stages:
                     <div><br></div>
                     <div><b>Name</b>: $(CreateBranch.Branch)</div>
                     <div><b>Based on commit</b>: $(CreateBranch.CommitHash)</div>
-                  condition: and(succeeded(), eq(variables['CheckBranchExists.Exists'], 'false'))
+                  condition: and(succeeded(), eq(variables['CheckBranchExists.Exists'], 'false'), eq(variables['Build.Repository.Provider'], 'TfsGit'))
+              - template: ../../azure-devops/steps/add-work-item-hyperlink-steps.yml
+                parameters:
+                  workItemId: ${{ parameters.workItemId }}
+                  url: https://github.com/$(Build.Repository.Name)/tree/$(CreateBranch.Branch)
+                  comment: Created by run $(Build.BuildId) of $(Build.DefinitionName)
+                  historyComment: >
+                    <div>Created branch.</div>
+                    <div><br></div>
+                    <div><b>Name</b>: $(CreateBranch.Branch)</div>
+                    <div><b>Based on commit</b>: $(CreateBranch.CommitHash)</div>
+                    <div><b>URL</b>: <a href="https://github.com/$(Build.Repository.Name)/tree/$(CreateBranch.Branch)">https://github.com/$(Build.Repository.Name)/tree/$(CreateBranch.Branch)</a></div>
+                  condition: and(succeeded(), eq(variables['CheckBranchExists.Exists'], 'false'), eq(variables['Build.Repository.Provider'], 'GitHub'))
   - stage: PrepareEnvironment
     displayName: Prepare environment
     dependsOn: CreateEnvironment
