@@ -3,6 +3,18 @@ parameters:
     displayName: Pull request ID
     type: string
     default: $(System.PullRequest.PullRequestId)
+  - name: githubToken
+    displayName: Optional GitHub token for PR metadata
+    type: string
+    default: ''
+  - name: githubApiBaseUrl
+    displayName: GitHub API base URL
+    type: string
+    default: https://api.github.com
+  - name: workItemReferences
+    displayName: Optional AB# work item references
+    type: string
+    default: ''
   - name: metadataQuery
     displayName: Metadata query
     type: object
@@ -82,14 +94,119 @@ steps:
           }
       }
 
+      function Get-ReferencedWorkItemIdsFromText {
+          param(
+            [string]$Text
+          )
+
+          if ([string]::IsNullOrWhiteSpace($Text)) {
+            return @()
+          }
+
+          return [regex]::Matches($Text, '(?im)\bAB#(?<id>\d+)\b') |
+          ForEach-Object { $_.Groups['id'].Value } |
+          Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+          Sort-Object -Unique
+        }
+
+      function Resolve-PullRequestWorkItemIds {
+          param(
+            [string]$Provider,
+            [string]$PullRequestId,
+            [string]$WorkItemReferences
+          )
+
+          function Get-GitHubPullRequestText {
+            param(
+              [string]$ApiBaseUrl,
+              [string]$RepositoryName,
+              [string]$PullRequestNumber,
+              [string]$GitHubToken
+            )
+
+              $effectiveGitHubToken = if (-not [string]::IsNullOrWhiteSpace($GitHubToken)) { $GitHubToken } else { $env:GITHUB_TOKEN }
+              $effectiveApiBaseUrl = if (-not [string]::IsNullOrWhiteSpace($ApiBaseUrl)) { $ApiBaseUrl } elseif (-not [string]::IsNullOrWhiteSpace($env:GITHUB_API_BASE_URL)) { $env:GITHUB_API_BASE_URL } else { 'https://api.github.com' }
+
+              if ([string]::IsNullOrWhiteSpace($effectiveGitHubToken)) {
+              Write-Warning "GITHUB_TOKEN is not provided; unable to fetch GitHub PR title/body."
+              return @()
+            }
+
+            if ([string]::IsNullOrWhiteSpace($RepositoryName) -or [string]::IsNullOrWhiteSpace($PullRequestNumber)) {
+              Write-Warning "Repository name or pull request number is missing; unable to fetch GitHub PR title/body."
+              return @()
+            }
+
+              $apiBase = $effectiveApiBaseUrl.TrimEnd('/')
+            $uri = "$apiBase/repos/$RepositoryName/pulls/$PullRequestNumber"
+            $headers = @{
+                Authorization = "Bearer $effectiveGitHubToken"
+              Accept        = "application/vnd.github+json"
+              'User-Agent'  = 'azure-pipelines'
+            }
+
+            try {
+              $pr = Invoke-RestMethod -Method Get -Headers $headers -Uri $uri
+              return @($pr.title, $pr.body)
+            }
+            catch {
+              Write-Warning "Failed to fetch GitHub PR details from $uri. $($_.Exception.Message)"
+              return @()
+            }
+          }
+
+          if ($Provider -eq 'TfsGit') {
+            $ids = az repos pr work-item list --id $PullRequestId --query [*].id | ConvertFrom-Json
+            if ($null -eq $ids) {
+              return @()
+            }
+
+            return @($ids | ForEach-Object { "$_" } | Sort-Object -Unique)
+          }
+
+          Write-Host "Using AB# reference parsing for repository provider '$Provider'."
+
+          $githubPullRequestTexts = @()
+          if ($Provider -eq 'GitHub') {
+              $pullRequestNumber = if (-not [string]::IsNullOrWhiteSpace($env:SYSTEM_PULLREQUEST_PULLREQUESTNUMBER)) {
+                  $env:SYSTEM_PULLREQUEST_PULLREQUESTNUMBER
+              }
+              elseif (-not [string]::IsNullOrWhiteSpace($PullRequestId)) {
+                  $PullRequestId
+              }
+              else {
+                  ''
+              }
+
+              $githubPullRequestTexts = Get-GitHubPullRequestText -ApiBaseUrl $env:FINDWORKITEMHYPERLINK_GITHUBAPIBASEURL -RepositoryName $env:BUILD_REPOSITORY_NAME -PullRequestNumber $pullRequestNumber -GitHubToken $env:FINDWORKITEMHYPERLINK_GITHUBTOKEN
+          }
+
+          $sourceTexts = @(
+            $WorkItemReferences,
+            $env:SYSTEM_PULLREQUEST_TITLE,
+            $env:SYSTEM_PULLREQUEST_PULLREQUESTTITLE,
+            $githubPullRequestTexts,
+            $env:SYSTEM_PULLREQUEST_SOURCEBRANCH,
+            $env:SYSTEM_PULLREQUEST_TARGETBRANCH,
+            $env:BUILD_SOURCEVERSIONMESSAGE
+          ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+          $ids = @()
+          foreach ($text in $sourceTexts) {
+            $ids += Get-ReferencedWorkItemIdsFromText -Text $text
+          }
+
+          return @($ids | Sort-Object -Unique)
+        }
+
       Write-Host "Finding pull request work item hyperlink."
-      Write-Host "`Pull request ID: $env:FINDWORKITEMHYPERLINK_WORKITEMID"
+      Write-Host "`tPull request ID: $env:FINDWORKITEMHYPERLINK_PULLREQUESTID"
       Write-Host "`tMetadata:`n$env:FINDWORKITEMHYPERLINK_METADATAQUERY"
                         
       az devops configure --defaults organization=$(System.TeamFoundationCollectionUri) project=$(System.TeamProject)
 
       Write-Host "Getting work items associated with pull request $env:FINDWORKITEMHYPERLINK_PULLREQUESTID."
-      $workItemIds = az repos pr work-item list --id $env:FINDWORKITEMHYPERLINK_PULLREQUESTID --query [*].id | ConvertFrom-Json
+      $workItemIds = Resolve-PullRequestWorkItemIds -Provider $env:BUILD_REPOSITORY_PROVIDER -PullRequestId $env:FINDWORKITEMHYPERLINK_PULLREQUESTID -WorkItemReferences $env:FINDWORKITEMHYPERLINK_WORKITEMREFERENCES
 
       foreach ($workItemId in $workItemIds) {
           Write-Host "Getting links for work item $workItemId."
@@ -123,11 +240,14 @@ steps:
       }
 
       Write-Host "Pull request work item link not found."  
-    name: ${{ parameters.stepName }}
+    name: FindWorkItemHyperlink
     displayName: ${{ parameters.stepDisplayName }}
     condition: ${{ parameters.condition }}
     env:
       AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
       FINDWORKITEMHYPERLINK_PULLREQUESTID: ${{ parameters.pullRequestId }}
+      FINDWORKITEMHYPERLINK_GITHUBTOKEN: ${{ parameters.githubToken }}
+      FINDWORKITEMHYPERLINK_GITHUBAPIBASEURL: ${{ parameters.githubApiBaseUrl }}
+      FINDWORKITEMHYPERLINK_WORKITEMREFERENCES: ${{ parameters.workItemReferences }}
       FINDWORKITEMHYPERLINK_METADATAQUERY: ${{ convertToJson(parameters.metadataQuery) }}
       FINDWORKITEMHYPERLINK_VARIABLEPREFIX: ${{ parameters.variablePrefix }}

@@ -42,6 +42,11 @@ If your source repository is hosted on GitHub and your pipeline needs to push co
 
 Push-back and branch-creation steps are commonly restricted for builds triggered from forked pull requests. For GitHub fork PR validation, plan for reduced token permissions and avoid flows that require repository writes.
 
+If you are validating GitHub pull requests and rely on `AB#` references in PR title or description, provide a `GITHUB_TOKEN` secret variable to the pipeline so the templates can read PR metadata from the GitHub API.
+
+- `GITHUB_TOKEN`: token with read access to pull requests in the target repository.
+- `GITHUB_API_BASE_URL` **[optional]**: override API base URL for GitHub Enterprise Server (for example `https://github.contoso.com/api/v3`). If omitted, defaults to `https://api.github.com`.
+
 ## Usage
 
 This section details the pipeline templates that are available.
@@ -148,6 +153,11 @@ A validation pipeline template that can build and deploy changes in a pull reque
 | dotNetSdkVersion **[optional]**           | The .NET SDK version to use to build the package. Defaults to 6.x.                                                                                                                                                                          |
 
 The validation pipeline builds the package, analyses the updates, runs the Solution Checker (if any solutions have been updated), creates an environment, deploys to the environment, and waits for manual validation. This allows for changes to be built, deployed, and tested before merging to main.
+
+For GitHub-backed repositories, Azure Repos PR work item lookup is not available. The validation-related work item helpers therefore use provider-aware logic:
+
+- `TfsGit` (Azure Repos): uses `az repos pr work-item list`.
+- `GitHub`: parses `AB#` references from explicit inputs, PR title, PR description, branch names, and commit message. PR title/description are retrieved from the GitHub API when `GITHUB_TOKEN` is provided.
 
 In the event that you are executing automating tests, these can be ran as part of the `testJobs`. Jobs passed to `prepareEnvironmentJobs`, `finaliseEnvironmentJobs`, and `testJobs` have access to the `BuildTools.EnvironmentUrl` and `BuildTools.EnvironmentId` variables that point to the newly created environment.
 

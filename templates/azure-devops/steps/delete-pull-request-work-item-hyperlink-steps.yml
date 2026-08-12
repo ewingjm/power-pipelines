@@ -2,6 +2,18 @@ parameters:
   - name: pullRequestId
     displayName: Pull Request ID
     type: string
+  - name: githubToken
+    displayName: Optional GitHub token for PR metadata
+    type: string
+    default: ''
+  - name: githubApiBaseUrl
+    displayName: GitHub API base URL
+    type: string
+    default: https://api.github.com
+  - name: workItemReferences
+    displayName: Optional AB# work item references
+    type: string
+    default: ''
   - name: url
     displayName: External URL
     type: string
@@ -20,66 +32,174 @@ parameters:
 
 steps:
   - powershell: |
+      function Get-ReferencedWorkItemIdsFromText {
+          param(
+              [string]$Text
+          )
+
+          if ([string]::IsNullOrWhiteSpace($Text)) {
+              return @()
+          }
+
+          return [regex]::Matches($Text, '(?im)\bAB#(?<id>\d+)\b') |
+            ForEach-Object { $_.Groups['id'].Value } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Sort-Object -Unique
+      }
+
+      function Resolve-PullRequestWorkItemIds {
+          param(
+              [string]$Provider,
+              [string]$PullRequestId,
+              [string]$WorkItemReferences
+          )
+
+          function Get-GitHubPullRequestText {
+              param(
+                  [string]$ApiBaseUrl,
+                  [string]$RepositoryName,
+                  [string]$PullRequestNumber,
+                  [string]$GitHubToken
+              )
+
+              $effectiveGitHubToken = if (-not [string]::IsNullOrWhiteSpace($GitHubToken)) { $GitHubToken } else { $env:GITHUB_TOKEN }
+              $effectiveApiBaseUrl = if (-not [string]::IsNullOrWhiteSpace($ApiBaseUrl)) { $ApiBaseUrl } elseif (-not [string]::IsNullOrWhiteSpace($env:GITHUB_API_BASE_URL)) { $env:GITHUB_API_BASE_URL } else { 'https://api.github.com' }
+
+              if ([string]::IsNullOrWhiteSpace($effectiveGitHubToken)) {
+                  Write-Warning "GITHUB_TOKEN is not provided; unable to fetch GitHub PR title/body."
+                  return @()
+              }
+
+              if ([string]::IsNullOrWhiteSpace($RepositoryName) -or [string]::IsNullOrWhiteSpace($PullRequestNumber)) {
+                  Write-Warning "Repository name or pull request number is missing; unable to fetch GitHub PR title/body."
+                  return @()
+              }
+
+              $apiBase = $effectiveApiBaseUrl.TrimEnd('/')
+              $uri = "$apiBase/repos/$RepositoryName/pulls/$PullRequestNumber"
+              $headers = @{
+                  Authorization = "Bearer $effectiveGitHubToken"
+                  Accept        = "application/vnd.github+json"
+                  'User-Agent'  = 'azure-pipelines'
+              }
+
+              try {
+                  $pr = Invoke-RestMethod -Method Get -Headers $headers -Uri $uri
+                  return @($pr.title, $pr.body)
+              }
+              catch {
+                  Write-Warning "Failed to fetch GitHub PR details from $uri. $($_.Exception.Message)"
+                  return @()
+              }
+          }
+
+          if ($Provider -eq 'TfsGit') {
+              $ids = az repos pr work-item list --id $PullRequestId --query [*].id | ConvertFrom-Json
+              if ($null -eq $ids) {
+                  return @()
+              }
+
+              return @($ids | ForEach-Object { "$_" } | Sort-Object -Unique)
+          }
+
+          Write-Host "Using AB# reference parsing for repository provider '$Provider'."
+
+          $githubPullRequestTexts = @()
+          if ($Provider -eq 'GitHub') {
+              $pullRequestNumber = if (-not [string]::IsNullOrWhiteSpace($env:SYSTEM_PULLREQUEST_PULLREQUESTNUMBER)) {
+                  $env:SYSTEM_PULLREQUEST_PULLREQUESTNUMBER
+              }
+              elseif (-not [string]::IsNullOrWhiteSpace($PullRequestId)) {
+                  $PullRequestId
+              }
+              else {
+                  ''
+              }
+
+              $githubPullRequestTexts = Get-GitHubPullRequestText -ApiBaseUrl $env:DELETEHYPERLINK_GITHUBAPIBASEURL -RepositoryName $env:BUILD_REPOSITORY_NAME -PullRequestNumber $pullRequestNumber -GitHubToken $env:DELETEHYPERLINK_GITHUBTOKEN
+          }
+
+          $sourceTexts = @(
+              $WorkItemReferences,
+              $env:SYSTEM_PULLREQUEST_TITLE,
+              $env:SYSTEM_PULLREQUEST_PULLREQUESTTITLE,
+              $githubPullRequestTexts,
+              $env:SYSTEM_PULLREQUEST_SOURCEBRANCH,
+              $env:SYSTEM_PULLREQUEST_TARGETBRANCH,
+              $env:BUILD_SOURCEVERSIONMESSAGE
+          ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+          $ids = @()
+          foreach ($text in $sourceTexts) {
+              $ids += Get-ReferencedWorkItemIdsFromText -Text $text
+          }
+
+          return @($ids | Sort-Object -Unique)
+      }
+
       Write-Host "Deleting pull request work item hyperlink(s)."
       Write-Host "`tPull request ID: $env:DELETEHYPERLINK_PULLREQUESTID"
       Write-Host "`tURL: $env:DELETEHYPERLINK_URL"
-      
+
       az devops configure --defaults organization=$(System.TeamFoundationCollectionUri) project=$(System.TeamProject)
-      
-      $workItems = az repos pr work-item list --id $env:DELETEHYPERLINK_PULLREQUESTID --query [*].id | ConvertFrom-Json
-      
-      if ($workItems.Length -eq 0) {
-        Write-Host "No work items found."
-        return
+
+      $workItems = Resolve-PullRequestWorkItemIds -Provider $env:BUILD_REPOSITORY_PROVIDER -PullRequestId $env:DELETEHYPERLINK_PULLREQUESTID -WorkItemReferences $env:DELETEHYPERLINK_WORKITEMREFERENCES
+
+      if ($workItems.Count -eq 0) {
+          Write-Host "No work items found."
+          return
       }
 
       $apiBaseUrl = "$env:SYSTEM_TEAMFOUNDATIONCOLLECTIONURI$env:SYSTEM_TEAMPROJECT/"
       $endpointUrl = "$($apiBaseUrl)_apis/wit/workitems"
       $requestHeaders = @{
-        "Authorization" = "Bearer $env:AZURE_DEVOPS_EXT_PAT"
-        "Content-Type"  = "application/json-patch+json"
+          "Authorization" = "Bearer $env:AZURE_DEVOPS_EXT_PAT"
+          "Content-Type"  = "application/json-patch+json"
       }
 
       $searchUri = [System.Uri]::new($env:DELETEHYPERLINK_URL)
-      
+
       $workItems | ForEach-Object {
-        $workItemId = $_
-        $workItem = az boards work-item show --id $workItemId --expand relations | ConvertFrom-Json 
-        [array]$relationsToDelete = $workItem.relations | Where-Object { [System.Uri]::new($_.url) -eq $searchUri }
-        [array]::Reverse($relationsToDelete)
-        
-        $relationsToDelete | ForEach-Object {
-          $patchDocument = [System.Collections.ArrayList]@(
-            @{
-                op    = "remove"
-                path  = "/relations/$($workItem.relations.IndexOf($_))"
-                value = $null
-            }
-          )
+          $workItemId = $_
+          $workItem = az boards work-item show --id $workItemId --expand relations | ConvertFrom-Json
+          [array]$relationsToDelete = $workItem.relations | Where-Object { [System.Uri]::new($_.url) -eq $searchUri }
+          [array]::Reverse($relationsToDelete)
 
-          $deleteRelationParameters = @{
-            Method          = "PATCH"
-            Headers         = $requestHeaders
-            Uri             = "$endpointUrl/$($workItemId)?api-version=7.0"
-            Body            = ConvertTo-Json -InputObject $patchDocument -Compress
-            UseBasicParsing = $true
+          $relationsToDelete | ForEach-Object {
+              $patchDocument = [System.Collections.ArrayList]@(
+                  @{
+                      op    = "remove"
+                      path  = "/relations/$($workItem.relations.IndexOf($_))"
+                      value = $null
+                  }
+              )
+
+              $deleteRelationParameters = @{
+                  Method          = "PATCH"
+                  Headers         = $requestHeaders
+                  Uri             = "$endpointUrl/$($workItemId)?api-version=7.0"
+                  Body            = ConvertTo-Json -InputObject $patchDocument -Compress
+                  UseBasicParsing = $true
+              }
+
+              $deleteRelationResponse = Invoke-WebRequest @deleteRelationParameters
+              if ($deleteRelationResponse.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
+                  Write-Warning $deleteRelationResponse.StatusDescription
+                  return
+              }
+
+              Write-Host "Deleted work item hyperlink for $workItemId."
           }
 
-          $deleteRelationResponse = Invoke-WebRequest @deleteRelationParameters
-          if ($deleteRelationResponse.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
-              Write-Warning $deleteRelationResponse.StatusDescription
-              return
-          }
-
-          Write-Host "Deleted work item hyperlink for $workItemId."
-        }       
-        
-        az boards work-item update --id $workItemId --discussion $env:DELETEHYPERLINK_HISTORYCOMMENT | Out-Null 
+          az boards work-item update --id $workItemId --discussion $env:DELETEHYPERLINK_HISTORYCOMMENT | Out-Null
       }
     displayName: ${{ parameters.stepDisplayName }}
     condition: ${{ parameters.condition }}
     env:
       AZURE_DEVOPS_EXT_PAT: $(System.AccessToken)
       DELETEHYPERLINK_PULLREQUESTID: ${{ parameters.pullRequestId }}
+      DELETEHYPERLINK_GITHUBTOKEN: ${{ parameters.githubToken }}
+      DELETEHYPERLINK_GITHUBAPIBASEURL: ${{ parameters.githubApiBaseUrl }}
+      DELETEHYPERLINK_WORKITEMREFERENCES: ${{ parameters.workItemReferences }}
       DELETEHYPERLINK_URL: ${{ parameters.url }}
       DELETEHYPERLINK_HISTORYCOMMENT: ${{ parameters.historyComment }}
