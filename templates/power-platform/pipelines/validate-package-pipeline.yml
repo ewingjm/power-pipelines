@@ -235,13 +235,10 @@ stages:
                 object: 
                   environment: validation
                   pullRequestId: $(System.PullRequest.PullRequestId)
-                  pullRequestNumber: $(System.PullRequest.PullRequestNumber)
                   runId: $(Build.BuildId)
                   repoId: $(Build.Repository.ID)
-                  repositoryProvider: $(Build.Repository.Provider)
-                  repositoryName: $(Build.Repository.Name)
-                  repositoryUri: $(Build.Repository.Uri)
                   commitHash: $(SetWorkItemHyperlink.CommitHash)
+                maxLength: 255
                 variable: SetWorkItemHyperlink.HyperlinkMetadata
             - template: ../../azure-devops/steps/add-pull-request-work-item-hyperlink-steps.yml
               parameters:

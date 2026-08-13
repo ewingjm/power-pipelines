@@ -130,10 +130,8 @@ stages:
                   solutionName: ${{ parameters.solution }}
                   runId: $(Build.BuildId)
                   repoId: $(Build.Repository.ID)
-                  repositoryProvider: $(Build.Repository.Provider)
-                  repositoryName: $(Build.Repository.Name)
-                  repositoryUri: $(Build.Repository.Uri)
                   commitHash: $(SetWorkItemHyperlink.CommitHash)
+                maxLength: 255
                 variable: SetWorkItemHyperlink.HyperlinkMetadata
             - template: ../../azure-devops/steps/add-work-item-hyperlink-steps.yml
               parameters:
