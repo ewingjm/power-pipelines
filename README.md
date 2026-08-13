@@ -38,6 +38,15 @@ The use of ephemeral development and test environments allows your team to devel
 
 These pipelines assume fully automated deployments via the Package Deployer. You must have a Package Deployer package project created via the Power Apps CLI.
 
+If your source repository is hosted on GitHub and your pipeline needs to push commits or create branches, ensure the Azure Pipelines checkout credentials have write access to the repository.
+
+Push-back and branch-creation steps are commonly restricted for builds triggered from forked pull requests. For GitHub fork PR validation, plan for reduced token permissions and avoid flows that require repository writes.
+
+If you are validating GitHub pull requests and rely on `AB#` references in PR title or description, provide a `GITHUB_TOKEN` secret variable to the pipeline so the templates can read PR metadata from the GitHub API.
+
+- `GITHUB_TOKEN`: token with read access to pull requests in the target repository.
+- `GITHUB_API_BASE_URL` **[optional]**: override API base URL for GitHub Enterprise Server (for example `https://github.contoso.com/api/v3`). If omitted, defaults to `https://api.github.com`.
+
 ## Usage
 
 This section details the pipeline templates that are available.
@@ -70,7 +79,7 @@ Creates a development environment for a given solution within a package.
 | config **[optional]**                  | The path to a Package Deployer import configuration file (relative to the root of the package). Useful when you require a different package configuration for development environments.                                                    |
 | templateEnvironmentUrl **[optional]**  | The URL of an existing Dataverse environment to copy from after the ephemeral environment is created. The pipeline uses the main `serviceConnection` for authentication; provide the source environment URL here when a template is required. |
 | templateEnvironmentCopyType **[optional]** | The copy strategy to use when a template environment is supplied. Supported values are `MinimalCopy` and `FullCopy`. Defaults to `MinimalCopy`.                                                                                                 |
-| branch **[optional]**                  | The name of a Git branch to create at the commit from which the environment was provisioned.                                                                                                                                               |
+| branch **[optional]**                  | The name of a Git branch to create at the commit from which the environment was provisioned. For Azure Repos, this is added as a work item branch artifact link. For GitHub repositories, a standard work item hyperlink to the branch URL is added instead. |
 | preBuildSteps **[optional]**           | Additional steps to run before the build.                                                                                                                                                                                                  |
 | postBuildSteps **[optional]**          | Additional steps to run after the build.                                                                                                                                                                                                   |
 | dotNetSdkVersion **[optional]**        | The .NET SDK version to use to build the package. Defaults to 6.x.                                                                                                                                                                         |
@@ -101,6 +110,8 @@ The `postUnpackSteps` parameter can be used to extend the extract process. The S
 For example, pull requests updating the same solution(s) will frequently generate conflicts that are difficult to resolve around the `MissingDependencies` elements of the _Solution.xml_. 
 A step [template](./steps/split-missing-dependencies-steps.yml) has been created to further unpack the missing dependencies into their own individual files. This makes conflicts much easier to resolve.
 Note that any changes to the unpack process will also need changes to the pack process. Refer to the _pack missing dependencies_ sample [README.md](./samples/pack-missing-dependencies/README.md)
+
+This template commits and pushes metadata updates back to the target branch. In GitHub-hosted repositories, this requires write-capable checkout credentials (for example, via a GitHub service connection with repository write permissions).
 
 ### Validate package
 
@@ -140,8 +151,16 @@ A validation pipeline template that can build and deploy changes in a pull reque
 | preBuildSteps **[optional]**              | Additional steps to run before the build.                                                                                                                                                                                                   |
 | postBuildSteps **[optional]**             | Additional steps to run after the build.                                                                                                                                                                                                    |
 | dotNetSdkVersion **[optional]**           | The .NET SDK version to use to build the package. Defaults to 6.x.                                                                                                                                                                          |
+| githubToken **[optional]**                | Optional GitHub token used by work item helper templates to fetch pull request metadata (title/body). If omitted, helpers fall back to the `GITHUB_TOKEN` environment variable.                                                           |
+| githubApiBaseUrl **[optional]**           | Optional GitHub API base URL override (for example GitHub Enterprise Server `https://github.contoso.com/api/v3`). Defaults to `https://api.github.com` when not provided.                                                                |
+| workItemReferences **[optional]**         | Optional explicit `AB#` work item references used to resolve pull request work items when provider-aware lookup is required (for example `AB#123 AB#456`).                                                                                |
 
 The validation pipeline builds the package, analyses the updates, runs the Solution Checker (if any solutions have been updated), creates an environment, deploys to the environment, and waits for manual validation. This allows for changes to be built, deployed, and tested before merging to main.
+
+For GitHub-backed repositories, Azure Repos PR work item lookup is not available. The validation-related work item helpers therefore use provider-aware logic:
+
+- `TfsGit` (Azure Repos): uses `az repos pr work-item list`.
+- `GitHub`: parses `AB#` references from explicit inputs, PR title, PR description, branch names, and commit message. PR title/description are retrieved from the GitHub API when `GITHUB_TOKEN` is provided.
 
 In the event that you are executing automating tests, these can be ran as part of the `testJobs`. Jobs passed to `prepareEnvironmentJobs`, `finaliseEnvironmentJobs`, and `testJobs` have access to the `BuildTools.EnvironmentUrl` and `BuildTools.EnvironmentId` variables that point to the newly created environment.
 
@@ -253,6 +272,9 @@ You can pass the following to the `metadata` property.
 | runId       | The ID of the pipeline run that created the environment.                         |
 | repo        | The name of the repository containing the pipeline that created the environment. |
 | repoId      | The ID of the repository containing the pipeline that created the environment.   |
+| repositoryProvider | The repository provider used by the pipeline run (for example `TfsGit` or `GitHub`). |
+| repositoryName | The repository name used by the pipeline run (for GitHub this is typically `owner/repository`). |
+| repositoryUri | The repository URI used by the pipeline run. |
 
 For example:
 

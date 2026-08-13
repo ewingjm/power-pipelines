@@ -128,11 +128,21 @@ jobs:
         displayName: Get package file
         name: GetPackageFile
       - powershell: |
-          if ($env:BUILD_REASON -eq "PullRequest") {
-            Write-Host "##vso[task.setvariable variable=CommitHash;isOutput=true]$($env:SYSTEM_PULLREQUEST_SOURCECOMMITID.Substring(0, 7))"
-          } else {
-            Write-Host "##vso[task.setvariable variable=CommitHash;isOutput=true]$($env:BUILD_SOURCEVERSION.Substring(0, 7))"
+          $commit = if ($env:SYSTEM_PULLREQUEST_SOURCECOMMITID) {
+            $env:SYSTEM_PULLREQUEST_SOURCECOMMITID
           }
+          elseif ($env:BUILD_SOURCEVERSION) {
+            $env:BUILD_SOURCEVERSION
+          }
+          else {
+            (git rev-parse HEAD).Trim()
+          }
+
+          if ([string]::IsNullOrWhiteSpace($commit) -or $commit.Length -lt 7) {
+            throw "Unable to resolve a valid commit hash."
+          }
+
+          Write-Host "##vso[task.setvariable variable=CommitHash;isOutput=true]$($commit.Substring(0, 7))"
         displayName: Get short commit hash
         name: GetShortCommitHash
       - publish: $(BuildPackage.OutputDirectory)

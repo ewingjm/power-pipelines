@@ -13,6 +13,10 @@ parameters:
     displayName: Condition
     type: string
     default: succeeded()
+  - name: maxLength
+    displayName: Optional maximum JSON length
+    type: number
+    default: 0
 
 steps:
   - powershell: |
@@ -20,9 +24,21 @@ steps:
       Write-Host $env:SERIALISETOJSON_OBJECT
       
       $compressedJson = $env:SERIALISETOJSON_OBJECT | ConvertFrom-Json | ConvertTo-Json -Depth 100 -Compress 
+
+      if ($env:SERIALISETOJSON_MAXLENGTH -and [int]$env:SERIALISETOJSON_MAXLENGTH -gt 0) {
+        $maxLength = [int]$env:SERIALISETOJSON_MAXLENGTH
+        $jsonLength = $compressedJson.Length
+
+        if ($jsonLength -gt $maxLength) {
+          Write-Error "Serialized JSON length ($jsonLength) exceeds the configured maximum ($maxLength). Reduce metadata fields or values before setting the variable '$env:SERIALISETOJSON_VARIABLE'."
+          exit 1
+        }
+      }
+
       Write-Host "##vso[task.setvariable variable=$env:SERIALISETOJSON_VARIABLE;]$compressedJson"
     displayName: ${{ parameters.stepDisplayName }}
     condition: ${{ parameters.condition }}
     env:
       SERIALISETOJSON_OBJECT: ${{ convertToJson(parameters.object) }}
       SERIALISETOJSON_VARIABLE: ${{ parameters.variable }}
+      SERIALISETOJSON_MAXLENGTH: ${{ parameters.maxLength }}

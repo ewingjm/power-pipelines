@@ -28,6 +28,77 @@ steps:
       $maxAttempts = 60
       $sleepSeconds = 10
 
+      function Get-ApiErrorDiagnostics {
+        param(
+          [System.Management.Automation.ErrorRecord]$ErrorRecord
+        )
+
+        $exception = $ErrorRecord.Exception
+        $response = $exception.Response
+        $statusCode = $null
+        $statusDescription = $null
+        $responseBody = $null
+        $responseHeaders = @()
+
+        if ($null -ne $response) {
+          try {
+            if ($null -ne $response.StatusCode) {
+              $statusCode = [int]$response.StatusCode
+            }
+          }
+          catch {}
+
+          try {
+            if ($null -ne $response.StatusDescription) {
+              $statusDescription = [string]$response.StatusDescription
+            }
+          }
+          catch {}
+
+          try {
+            $headers = $response.Headers
+            if ($null -ne $headers) {
+              foreach ($headerKey in $headers.AllKeys) {
+                if ($null -ne $headerKey) {
+                  $responseHeaders += "${headerKey}: $($headers[$headerKey])"
+                }
+              }
+            }
+          }
+          catch {}
+
+          try {
+            $stream = $response.GetResponseStream()
+            if ($null -ne $stream) {
+              $reader = New-Object System.IO.StreamReader($stream)
+              $responseBody = $reader.ReadToEnd()
+              $reader.Dispose()
+              $stream.Dispose()
+            }
+          }
+          catch {}
+        }
+
+        if ([string]::IsNullOrWhiteSpace($responseBody) -and -not [string]::IsNullOrWhiteSpace($ErrorRecord.ErrorDetails.Message)) {
+          $responseBody = $ErrorRecord.ErrorDetails.Message
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($responseBody) -and $responseBody.Length -gt 4000) {
+          $responseBody = $responseBody.Substring(0, 4000) + "... [truncated]"
+        }
+
+        return [PSCustomObject]@{
+          StatusCode = $statusCode
+          StatusDescription = $statusDescription
+          ResponseHeaders = $responseHeaders
+          ResponseBody = $responseBody
+          Message = $exception.Message
+          FullyQualifiedErrorId = $ErrorRecord.FullyQualifiedErrorId
+          Category = [string]$ErrorRecord.CategoryInfo
+          ScriptStackTrace = $ErrorRecord.ScriptStackTrace
+        }
+      }
+
       for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
         try {
           InvokeApi -Method PATCH `
@@ -45,14 +116,53 @@ steps:
           break
         }
         catch {
-          $message = $_.Exception.Message
+          $diagnostics = Get-ApiErrorDiagnostics -ErrorRecord $_
+          $message = $diagnostics.Message
+          $statusCode = $diagnostics.StatusCode
+
+          if ($statusCode -ge 500 -and $statusCode -le 599) {
+            Write-Warning "Received server error HTTP $statusCode while assigning security group."
+            if (-not [string]::IsNullOrWhiteSpace($diagnostics.StatusDescription)) {
+              Write-Warning "Status description: $($diagnostics.StatusDescription)"
+            }
+
+            if ($diagnostics.ResponseHeaders.Count -gt 0) {
+              Write-Warning "Response headers:"
+              foreach ($headerLine in $diagnostics.ResponseHeaders) {
+                Write-Warning "  $headerLine"
+              }
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($diagnostics.ResponseBody)) {
+              Write-Warning "Response body:"
+              Write-Warning $diagnostics.ResponseBody
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($diagnostics.FullyQualifiedErrorId)) {
+              Write-Warning "PowerShell error id: $($diagnostics.FullyQualifiedErrorId)"
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($diagnostics.Category)) {
+              Write-Warning "PowerShell category: $($diagnostics.Category)"
+            }
+          }
+
           if ($attempt -lt $maxAttempts -and $message -match 'OperationNotStartable|active lifecycle operation|\(409\) Conflict|The remote server returned an error: \(409\) Conflict') {
             Write-Warning "The environment is still busy or returned a 409 Conflict. Retrying in $sleepSeconds seconds (attempt $attempt of $maxAttempts)."
             Start-Sleep -Seconds $sleepSeconds
             continue
           }
 
-          throw "Failed to assign security group after $attempt attempt(s). $message"
+          if (-not [string]::IsNullOrWhiteSpace($diagnostics.ScriptStackTrace)) {
+            Write-Warning "Script stack trace:"
+            Write-Warning $diagnostics.ScriptStackTrace
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace($diagnostics.ResponseBody)) {
+            throw "Failed to assign security group after $attempt attempt(s). HTTP status: $statusCode. Error: $message. Response body: $($diagnostics.ResponseBody)"
+          }
+
+          throw "Failed to assign security group after $attempt attempt(s). HTTP status: $statusCode. Error: $message"
         }
       }
     displayName: Set security group on environment
