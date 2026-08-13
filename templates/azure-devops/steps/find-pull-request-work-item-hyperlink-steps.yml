@@ -240,7 +240,7 @@ steps:
       }
 
       Write-Host "Pull request work item link not found."  
-    name: FindWorkItemHyperlink
+    name: ${{ parameters.stepName }}
     displayName: ${{ parameters.stepDisplayName }}
     condition: ${{ parameters.condition }}
     env:
