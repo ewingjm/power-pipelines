@@ -190,14 +190,14 @@ stages:
               - template: ../../azure-devops/steps/add-work-item-hyperlink-steps.yml
                 parameters:
                   workItemId: ${{ parameters.workItemId }}
-                  url: https://github.com/$(Build.Repository.Name)/tree/$(CreateBranch.Branch)
+                  url: $(Build.Repository.Uri)/tree/$(CreateBranch.Branch)
                   comment: Created by run $(Build.BuildId) of $(Build.DefinitionName)
                   historyComment: >
                     <div>Created branch.</div>
                     <div><br></div>
                     <div><b>Name</b>: $(CreateBranch.Branch)</div>
                     <div><b>Based on commit</b>: $(CreateBranch.CommitHash)</div>
-                    <div><b>URL</b>: <a href="https://github.com/$(Build.Repository.Name)/tree/$(CreateBranch.Branch)">https://github.com/$(Build.Repository.Name)/tree/$(CreateBranch.Branch)</a></div>
+                    <div><b>URL</b>: <a href="$(Build.Repository.Uri)/tree/$(CreateBranch.Branch)">$(Build.Repository.Uri)/tree/$(CreateBranch.Branch)</a></div>
                   condition: and(succeeded(), eq(variables['CheckBranchExists.Exists'], 'false'), eq(variables['Build.Repository.Provider'], 'GitHub'))
   - stage: PrepareEnvironment
     displayName: Prepare environment
