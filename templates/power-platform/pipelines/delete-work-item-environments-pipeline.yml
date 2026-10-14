@@ -278,7 +278,7 @@ stages:
               $connectionDataParameters = @{
                   Method          = "GET"
                   Headers         = $getProjectParameters.Headers
-                  Uri             = "$($env:SYSTEM_TEAMFOUNDATIONCOLLECTIONURI)_apis/connectionData"
+                  Uri             = "$($env:SYSTEM_TEAMFOUNDATIONCOLLECTIONURI)_apis/connectionData?api-version=7.1-preview.1"
                   UseBasicParsing = $true
               }
               $pipelineIdentityId = (Invoke-WebRequest @connectionDataParameters | Select-Object -ExpandProperty Content | ConvertFrom-Json).authenticatedUser.id
