@@ -71,6 +71,7 @@ stages:
                 metadataQuery: 
                   environment: validation
                   pullRequestId: $(System.PullRequest.PullRequestId)
+                  repoId: $(Build.Repository.ID)
         - template: ../jobs/analyse-updates-job.yml
           parameters:
             dependsOn:
