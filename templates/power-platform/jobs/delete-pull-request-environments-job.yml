@@ -83,6 +83,7 @@ jobs:
     # An empty matrix is invalid, so skip when there is nothing to delete.
     condition: and(succeeded(), ne(dependencies.${{ format('Find{0}', parameters.jobName) }}.outputs['FindWorkItemHyperlink.EnvironmentsCount'], '0'))
     strategy:
+      maxParallel: 1
       matrix: $[ dependencies.${{ format('Find{0}', parameters.jobName) }}.outputs['FindWorkItemHyperlink.Environments'] ]
     steps:
       - checkout: none
