@@ -321,9 +321,22 @@ steps:
                   Where-Object { $_ -and $_ -match $hostPattern } |
                   Where-Object {
                       # The host suffix is -<BuildId>-<JobAttempt>: if the build is still retained it must have run for this pull request.
-                      # Expired builds are tolerated; the createdBy check remains the authority.
+                      # Expired or missing builds are tolerated; a failed lookup is not, because it could hide an unrelated environment.
                       $buildId = ($_ -split '\.')[0] -replace "^.*-(\d+)-\d+$", '$1'
-                      $build = az pipelines runs show --id $buildId 2>$null | ConvertFrom-Json
+                      $buildOutput = az pipelines runs show --id $buildId 2>$null
+                      if ($LASTEXITCODE -ne 0) {
+                          Write-Warning "Unable to verify build $buildId for $_ because the Azure DevOps lookup failed; rejecting the environment."
+                          return $false
+                      }
+
+                      try {
+                          $build = $buildOutput | ConvertFrom-Json
+                      }
+                      catch {
+                          Write-Warning "Unable to parse build $buildId for $_; rejecting the environment because the lookup result is unusable."
+                          return $false
+                      }
+
                       if (-not $build) {
                           Write-Warning "Build $buildId for $_ is no longer available; relying on the creator check."
                           return $true
