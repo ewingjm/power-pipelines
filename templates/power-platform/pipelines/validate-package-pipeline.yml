@@ -413,6 +413,7 @@ stages:
       metadataQuery:
         environment: validation
         pullRequestId: $(System.PullRequest.PullRequestId)
+        repoId: $(Build.Repository.ID)
       pullRequestId: $(System.PullRequest.PullRequestId)
       githubToken: ${{ parameters.githubToken }}
       githubApiBaseUrl: ${{ parameters.githubApiBaseUrl }}

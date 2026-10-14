@@ -15,6 +15,7 @@ parameters:
     default:
       environment: validation
       pullRequestId: $(System.PullRequest.PullRequestId)
+      repoId: $(Build.Repository.ID)
   - name: pullRequestId
     displayName: Pull request ID
     type: string
