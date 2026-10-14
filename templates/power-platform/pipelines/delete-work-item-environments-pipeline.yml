@@ -10,7 +10,7 @@ parameters:
     type: object
     default: {}
   - name: createdBy
-    displayName: Created by
+    displayName: (Obsolete - ignored) The pipeline now only deletes environments created by the service connection's own service principal
     type: string
     default: ''
 
@@ -23,7 +23,6 @@ stages:
         variables:
           DeleteEnvironments.CategoryStates: ${{ convertToJson(parameters.categoryStates) }}
           DeleteEnvironments.Metadata: ${{ convertToJson(parameters.metadata) }}
-          DeleteEnvironments.CreatedBy: ${{ parameters.createdBy }}
         steps:
           - checkout: none
           - task: PowerPlatformToolInstaller@2
@@ -34,6 +33,12 @@ stages:
             inputs:
               authenticationType: PowerPlatformSPN
               PowerPlatformSPN: ${{ parameters.serviceConnection }}
+          - template: /templates/power-platform/steps/get-service-principal-object-id-steps.yml
+            parameters:
+              tenantId: $(SetConnectionVariables.BuildTools.TenantId)
+              applicationId: $(SetConnectionVariables.BuildTools.ApplicationId)
+              clientSecret: $(SetConnectionVariables.BuildTools.ClientSecret)
+              variableName: DeleteServicePrincipalObjectId
           - powershell: |
               function Test-ObjectSubset {
                 param (
@@ -102,6 +107,7 @@ stages:
                   Where-Object stateCategory -in $categoryStates | `
                   Select-Object -ExpandProperty name -Unique
 
+              $hostPattern = '-\d+-\d+\.crm\d*\.dynamics\.com$'
               $apiBase = "$($env:SYSTEM_TEAMFOUNDATIONCOLLECTIONURI)$($env:SYSTEM_TEAMPROJECT)/"
               $stateConditions = ($states | ForEach-Object { return "[System.State] = '$($_)'" }) -join " OR "
               $workItemQuery = @"
@@ -192,8 +198,16 @@ stages:
                               return
                           }
 
-                          if ($relation.url -notmatch ".*\.crm\d+\.dynamics\.com") {
-                              Write-Host "  ✗ Invalid CRM URL format: $($relation.url)"
+                          try {
+                              $relationHost = ([System.Uri]$relation.url).Host
+                          }
+                          catch {
+                              Write-Host "  ✗ Invalid URL: $($relation.url)"
+                              return
+                          }
+
+                          if ($relationHost -notmatch $hostPattern) {
+                              Write-Host "  ✗ URL does not match the expected environment URL shape: $($relation.url)"
                               return
                           }
 
@@ -230,13 +244,11 @@ stages:
                   -ApplicationId $env:DELETEENVIRONMENTS_MANAGEMENTAPP_APPLICATIONID `
                   -ClientSecret $env:DELETEENVIRONMENTS_MANAGEMENTAPP_CLIENTSECRET
 
-              if ($env:DELETEENVIRONMENTS_CREATEDBY) {
-                  Write-Host "Getting environments created by $env:DELETEENVIRONMENTS_CREATEDBY."
-                  $environments = Get-AdminPowerAppEnvironment -CreatedBy $env:DELETEENVIRONMENTS_CREATEDBY
-              }
-              else {
-                  Write-Host "Getting all environments."
-                  $environments = Get-AdminPowerAppEnvironment
+              # Link metadata is editable, so only environments created by a trusted principal may be deleted.
+              $createdBy = $env:DELETEENVIRONMENTS_SERVICEPRINCIPALOBJECTID
+              Write-Host "Getting environments created by $createdBy."
+              $environments = Get-AdminPowerAppEnvironment | Where-Object {
+                  $_.Internal.properties.createdBy.id -eq $createdBy
               }
               $environments = $environments | Select-Object EnvironmentName, DisplayName, Internal
 
@@ -338,3 +350,4 @@ stages:
               DELETEENVIRONMENTS_MANAGEMENTAPP_TENANTID: $(SetConnectionVariables.BuildTools.TenantId)
               DELETEENVIRONMENTS_MANAGEMENTAPP_APPLICATIONID: $(SetConnectionVariables.BuildTools.ApplicationId)
               DELETEENVIRONMENTS_MANAGEMENTAPP_CLIENTSECRET: $(SetConnectionVariables.BuildTools.ClientSecret)
+              DELETEENVIRONMENTS_SERVICEPRINCIPALOBJECTID: $(DeleteServicePrincipalObjectId)

@@ -259,9 +259,13 @@ Deletes environments (created by pipelines extending other templates in this rep
 | serviceConnection        | The Power Platform service connection to use. This should be a [management app](https://learn.microsoft.com/en-us/power-platform/admin/powershell-create-service-principal#registering-an-admin-management-application) service principal. |
 | categoryStates           | The [category states](https://learn.microsoft.com/en-us/azure-devops/boards/work-items/workflow-and-state-categories?view=azure-devops&tabs=agile-process#category-states) used to filter work items to delete related environments for.   |
 | metadata **[optional]**  | Used to filter which environments to delete based on additional metadata (see below).                                                                                                                                                      |
-| createdBy **[optional]** | Used to filter which environments to delete based on the Azure AD object ID of a principal that created them.                                                                                                                              |
+| createdBy **[obsolete]** | Obsolete and ignored. The pipeline now only deletes environments created by the service principal of the service connection it runs as.                                                                                                    |
 
-It is recommended to run the pipeline(s) that extend this template on a fairly regular schedule (e.g. once per day). Ensure that the `categoryStates`, `metadata`, and `createdBy` filters are sufficient to avoid deleting environments unintentionally.
+Work item hyperlinks are editable, so they are never trusted on their own: the pipeline only deletes environments whose URL is a Dataverse host ending in the `-<number>-<number>` metadata suffix (values are not verified) and that were created by the service connection's own service principal. The pull request delete stage applies the same checks, and additionally requires the URL to match the `domainNamePrefix` shape.
+
+Because this pipeline can delete any environment created by its service principal, it is recommended to use separate service principals for different teams to ringfence their environments, and never to reuse a service principal that created production environments.
+
+It is recommended to run the pipeline(s) that extend this template on a fairly regular schedule (e.g. once per day). Ensure that the `categoryStates` and `metadata` filters are sufficient to avoid deleting environments unintentionally.
 
 You can pass the following to the `metadata` property.
 

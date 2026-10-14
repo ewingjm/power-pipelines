@@ -335,7 +335,8 @@ stages:
             or(
               succeeded('FinaliseEnvironment'),
               and(
-                succeeded('AnalyseUpdates'), 
+                succeeded('AnalyseUpdates'),
+                not(failed('SolutionChecker')),
                 eq(dependencies.CreateEnvironment.result, 'Skipped'),
                 or(
                   ne(dependencies.AnalyseUpdates.outputs['FindExistingEnvironment.FindWorkItemHyperlink.Relation.url'], ''),
@@ -351,7 +352,8 @@ stages:
             or(
               succeeded('DeployPackage'),
               and(
-                succeeded('AnalyseUpdates'), 
+                succeeded('AnalyseUpdates'),
+                not(failed('SolutionChecker')),
                 eq(dependencies.CreateEnvironment.result, 'Skipped'),
                 or(
                   ne(dependencies.AnalyseUpdates.outputs['FindExistingEnvironment.FindWorkItemHyperlink.Relation.url'], ''),
@@ -362,6 +364,7 @@ stages:
           )
       dependsOn:
         - AnalyseUpdates
+        - SolutionChecker
         - CreateEnvironment
         - DeployPackage
         - ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
@@ -406,6 +409,7 @@ stages:
         - CreateEnvironment
         - ManualValidation
       serviceConnection: ${{ parameters.serviceConnection }}
+      domainNamePrefix: ${{ parameters.domainNamePrefix }}
       url: $[ coalesce(stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'], stageDependencies.AnalyseUpdates.FindExistingEnvironment.outputs['FindWorkItemHyperlink.Relation.url']) ]
       metadataQuery:
         environment: validation

@@ -2,6 +2,9 @@ parameters:
   - name: serviceConnection
     displayName: Service connection
     type: string
+  - name: domainNamePrefix
+    displayName: Domain name prefix of the validation environments (only matching environments created by the service connection are deleted)
+    type: string
   - name: url
     type: string
     displayName: Optional URL of an additional environment to delete (e.g. the current environment)
@@ -55,6 +58,8 @@ jobs:
           workItemReferences: ${{ parameters.workItemReferences }}
           metadataQuery: ${{ parameters.metadataQuery }}
           matrixVariableName: Environments
+          domainNamePrefix: ${{ parameters.domainNamePrefix }}
+          serviceConnection: ${{ parameters.serviceConnection }}
           ${{ if parameters.url }}:
             additionalUrls: $(DeleteEnvironments.Url)
           stepDisplayName: Find environments
@@ -105,6 +110,7 @@ jobs:
           githubApiBaseUrl: ${{ parameters.githubApiBaseUrl }}
           workItemReferences: ${{ parameters.workItemReferences }}
           url: $(EnvironmentUrl)
+          condition: eq(variables['Agent.JobStatus'], 'Succeeded')
           historyComment: >
             <div>Deleted validation environment.</div>
             <div><br></div>
