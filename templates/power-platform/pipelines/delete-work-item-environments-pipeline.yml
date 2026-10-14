@@ -275,43 +275,54 @@ stages:
                   Write-Host ""
                   Write-Host "Processing work item $workItemId ($($environmentsForWorkItem.Count) environment(s) to delete)..."
 
-                  # Process all environments for this work item to delete all hyperlinks at once
+                  # Process all environments for this work item to delete all hyperlinks at once.
+                  # Only remove work-item relations after the corresponding environment was verified as owned
+                  # and successfully deleted, so a stale URL for another principal cannot be patched away.
+                  $deletedEnvironmentLinks = [System.Collections.ArrayList]@()
                   foreach ($environmentToDelete in $environmentsForWorkItem) {
                       $matchingEnvironment = $environments | Where-Object { 
                           ([System.Uri]$_.Internal.properties.linkedEnvironmentMetadata.instanceUrl).Host -eq ([System.Uri]$environmentToDelete.url).Host }
+ 
+                      if (-not $matchingEnvironment) {
+                          continue
+                      }
 
-                      if ($matchingEnvironment) {
-                          Write-Host "Deleting $($matchingEnvironment.DisplayName)"
-                          try {
-                              Remove-AdminPowerAppEnvironment -EnvironmentName $matchingEnvironment.EnvironmentName | Out-Null
-                              Write-Host "Deleted environment for $workItemId."
-                          }
-                          catch {
-                              Write-Warning "Failed to delete $($matchingEnvironment.DisplayName)."
-                              Write-Warning $_
-                              return
-                          }
+                      Write-Host "Deleting $($matchingEnvironment.DisplayName)"
+                      try {
+                          Remove-AdminPowerAppEnvironment -EnvironmentName $matchingEnvironment.EnvironmentName | Out-Null
+                          Write-Host "Deleted environment for $workItemId."
+                          $deletedEnvironmentLinks.Add($environmentToDelete) | Out-Null
+                      }
+                      catch {
+                          Write-Warning "Failed to delete $($matchingEnvironment.DisplayName)."
+                          Write-Warning $_
+                          return
                       }
                   }
 
-                  # Build a single PATCH document with all relation removals for this work item
-                  # Sort indices in descending order to avoid index shifting issues
-                  $sortedIndices = @($environmentsForWorkItem | Sort-Object -Property linkIndex -Descending | ForEach-Object { $_.linkIndex })
-                  
+                  if ($deletedEnvironmentLinks.Count -eq 0) {
+                      Write-Host "No owned environments were successfully deleted for work item $workItemId; skipping relation patch."
+                      return
+                  }
+ 
+                  # Build a single PATCH document with only the relation removals that were verified and deleted.
+                  # Sort indices in descending order to avoid index shifting issues.
+                  $sortedIndices = @($deletedEnvironmentLinks | Sort-Object -Property linkIndex -Descending | ForEach-Object { $_.linkIndex })
+                   
                   $patchDocument = @()
-                  
+                   
                   # Add one history entry for all deletions
                   $historyValue = "<div>Deleted development environments:</div><div><br></div>"
-                  $environmentsForWorkItem | ForEach-Object {
+                  $deletedEnvironmentLinks | ForEach-Object {
                       $historyValue += "<div><b>URL</b>: <a href=""$($_.url)"">$($_.url)</a></div>"
                   }
-                  
+                   
                   $patchDocument += @{
                       op    = "add"
                       path  = "/fields/System.History"
                       value = $historyValue
                   }
-                  
+                   
                   # Add all relation removals (in descending index order)
                   $sortedIndices | ForEach-Object {
                       $patchDocument += @{
