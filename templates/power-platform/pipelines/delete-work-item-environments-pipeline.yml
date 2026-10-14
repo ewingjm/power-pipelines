@@ -10,7 +10,7 @@ parameters:
     type: object
     default: {}
   - name: createdBy
-    displayName: Created by
+    displayName: (Obsolete - ignored) The pipeline now only deletes environments created by the service connection's own service principal
     type: string
     default: ''
 
@@ -23,7 +23,6 @@ stages:
         variables:
           DeleteEnvironments.CategoryStates: ${{ convertToJson(parameters.categoryStates) }}
           DeleteEnvironments.Metadata: ${{ convertToJson(parameters.metadata) }}
-          DeleteEnvironments.CreatedBy: ${{ parameters.createdBy }}
         steps:
           - checkout: none
           - task: PowerPlatformToolInstaller@2
@@ -34,14 +33,20 @@ stages:
             inputs:
               authenticationType: PowerPlatformSPN
               PowerPlatformSPN: ${{ parameters.serviceConnection }}
+          - template: /templates/power-platform/steps/get-service-principal-object-id-steps.yml
+            parameters:
+              tenantId: $(SetConnectionVariables.BuildTools.TenantId)
+              applicationId: $(SetConnectionVariables.BuildTools.ApplicationId)
+              clientSecret: $(SetConnectionVariables.BuildTools.ClientSecret)
+              variableName: DeleteServicePrincipalObjectId
           - powershell: |
               function Test-ObjectSubset {
                 param (
-                    [PSObject] $Object1,
-                    [PSObject] $Object2
+                    $Object1,
+                    $Object2
                 )
 
-                if ($Object1 -isnot [PSObject] -or $Object2 -isnot [PSObject]) {
+                if ($Object1 -isnot [System.Management.Automation.PSCustomObject] -or $Object2 -isnot [System.Management.Automation.PSCustomObject]) {
                   return $Object1 -eq $Object2
                 }
 
@@ -102,6 +107,7 @@ stages:
                   Where-Object stateCategory -in $categoryStates | `
                   Select-Object -ExpandProperty name -Unique
 
+              $hostPattern = '-\d+-\d+\.crm\d*\.dynamics\.com$'
               $apiBase = "$($env:SYSTEM_TEAMFOUNDATIONCOLLECTIONURI)$($env:SYSTEM_TEAMPROJECT)/"
               $stateConditions = ($states | ForEach-Object { return "[System.State] = '$($_)'" }) -join " OR "
               $workItemQuery = @"
@@ -162,6 +168,22 @@ stages:
 
                   $workItems = ConvertFrom-Json -InputObject $listWorkItemsResponse.Content
                   $metadataQuery = $env:DELETEENVIRONMENTS_METADATA | ConvertFrom-Json
+                  if ($metadataQuery -isnot [System.Management.Automation.PSCustomObject]) {
+                      $metadataQuery = [PSCustomObject]@{}
+                  }
+
+                  # Scope to hyperlinks created from this pipeline's repository unless the caller set repoId explicitly.
+                  # The build identity and work items can be shared across teams, so this stops one team's run from
+                  # treating another team's hyperlinks (to environments its service principal cannot see) as stale.
+                  if (-not ($metadataQuery.PSObject.Properties.Name -contains 'repoId')) {
+                      if (-not $env:BUILD_REPOSITORY_ID) {
+                          Write-Error "Build.Repository.ID is not available, so hyperlinks cannot be scoped to this repository. Set metadata.repoId explicitly."
+                          return
+                      }
+                      $metadataQuery | Add-Member -NotePropertyName repoId -NotePropertyValue $env:BUILD_REPOSITORY_ID
+                  }
+                  Write-Host "Metadata filter: $($metadataQuery | ConvertTo-Json -Compress)"
+
                   $workItems.value | ForEach-Object {
                       $workItem = $_
                       $workItemId = $workItem.id
@@ -192,14 +214,22 @@ stages:
                               return
                           }
 
-                          if ($relation.url -notmatch ".*\.crm\d+\.dynamics\.com") {
-                              Write-Host "  ✗ Invalid CRM URL format: $($relation.url)"
+                          try {
+                              $relationHost = ([System.Uri]$relation.url).Host
+                          }
+                          catch {
+                              Write-Host "  ✗ Invalid URL: $($relation.url)"
+                              return
+                          }
+
+                          if ($relationHost -notmatch $hostPattern) {
+                              Write-Host "  ✗ URL does not match the expected environment URL shape: $($relation.url)"
                               return
                           }
 
                           Write-Host "  ✓ Matched: $($relation.url)"
                           $matchedCount++
-                          $environmentsToDelete.Add(@{
+                          $environmentsToDelete.Add([pscustomobject]@{
                                   workItemId = $workItemId
                                   url        = $relation.url
                                   linkIndex  = $workItem.relations.IndexOf($relation)
@@ -230,22 +260,86 @@ stages:
                   -ApplicationId $env:DELETEENVIRONMENTS_MANAGEMENTAPP_APPLICATIONID `
                   -ClientSecret $env:DELETEENVIRONMENTS_MANAGEMENTAPP_CLIENTSECRET
 
-              if ($env:DELETEENVIRONMENTS_CREATEDBY) {
-                  Write-Host "Getting environments created by $env:DELETEENVIRONMENTS_CREATEDBY."
-                  $environments = Get-AdminPowerAppEnvironment -CreatedBy $env:DELETEENVIRONMENTS_CREATEDBY
-              }
-              else {
-                  Write-Host "Getting all environments."
-                  $environments = Get-AdminPowerAppEnvironment
-              }
-              $environments = $environments | Select-Object EnvironmentName, DisplayName, Internal
+              function Get-UrlHost {
+                  param ($Url)
 
-              if (-not($environments.Count -gt 0)) {
-                  Write-Host "No environments found matching the search criteria."
+                  if ([string]::IsNullOrWhiteSpace($Url)) {
+                      return $null
+                  }
+
+                  try {
+                      return ([System.Uri]$Url).Host.ToLowerInvariant()
+                  }
+                  catch {
+                      return $null
+                  }
+              }
+
+              $connectionDataParameters = @{
+                  Method          = "GET"
+                  Headers         = $getProjectParameters.Headers
+                  Uri             = "$($env:SYSTEM_TEAMFOUNDATIONCOLLECTIONURI)_apis/connectionData?api-version=7.1-preview.1"
+                  UseBasicParsing = $true
+              }
+              $pipelineIdentityId = (Invoke-WebRequest @connectionDataParameters | Select-Object -ExpandProperty Content | ConvertFrom-Json).authenticatedUser.id
+              if ([string]::IsNullOrWhiteSpace($pipelineIdentityId)) {
+                  Write-Error "Unable to determine the identity of the pipeline."
                   return
               }
 
-              Write-Host "Found $($environments.Count) total environments."
+              # Hyperlink relations do not record who created them, so use the work item history. Azure DevOps sets
+              # revisedBy on each update, so (unlike editable link metadata) it reliably identifies the link creator.
+              function Get-PipelineCreatedHyperlinkUrls {
+                  param ($WorkItemId)
+
+                  $latestAddedBy = @{}
+                  $skip = 0
+                  $pageSize = 200
+                  do {
+                      $updatesUri = "$($apiBase)_apis/wit/workItems/$WorkItemId/updates?`$top=$pageSize&`$skip=$skip&api-version=7.0"
+                      $updatesResponse = Invoke-WebRequest -Method GET -Headers $getProjectParameters.Headers -Uri $updatesUri -UseBasicParsing
+                      $updates = @((ConvertFrom-Json -InputObject $updatesResponse.Content).value)
+                      foreach ($update in $updates) {
+                          foreach ($addedRelation in @($update.relations.added)) {
+                              if ($addedRelation -and $addedRelation.rel -eq "Hyperlink" -and $addedRelation.url) {
+                                  # Later updates overwrite earlier ones, so a re-added link uses its latest creator.
+                                  $latestAddedBy[$addedRelation.url.ToLowerInvariant()] = $update.revisedBy.id
+                              }
+                          }
+                      }
+                      $skip += $pageSize
+                  } while ($updates.Count -eq $pageSize)
+
+                  $pipelineCreatedUrls = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+                  foreach ($url in $latestAddedBy.Keys) {
+                      if ($latestAddedBy[$url] -eq $pipelineIdentityId) {
+                          $pipelineCreatedUrls.Add($url) | Out-Null
+                      }
+                  }
+
+                  return , $pipelineCreatedUrls
+              }
+
+              # The stale-link clean-up trusts this list, so a failed listing must not look like "no environments".
+              $allEnvironments = @(Get-AdminPowerAppEnvironment -ErrorAction Stop | Select-Object EnvironmentName, DisplayName, Internal)
+              $allEnvironmentHosts = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+              $allEnvironments | ForEach-Object {
+                  $environmentHost = Get-UrlHost $_.Internal.properties.linkedEnvironmentMetadata.instanceUrl
+                  if ($environmentHost) {
+                      $allEnvironmentHosts.Add($environmentHost) | Out-Null
+                  }
+              }
+
+              # Link metadata is editable, so only environments created by a trusted principal may be deleted.
+              $createdBy = $env:DELETEENVIRONMENTS_SERVICEPRINCIPALOBJECTID
+              Write-Host "Getting environments created by $createdBy."
+              $environments = @($allEnvironments | Where-Object {
+                  $_.Internal.properties.createdBy.id -eq $createdBy
+              })
+
+              # Do not return early when no owned environments remain: links for environments deleted by a previous
+              # run whose relation PATCH failed may still need to be removed.
+              Write-Host "Found $($environments.Count) owned environments ($($allEnvironments.Count) total)."
 
               # Group environments to delete by work item ID to batch operations
               $environmentsByWorkItem = $environmentsToDelete | Group-Object -Property workItemId
@@ -263,43 +357,93 @@ stages:
                   Write-Host ""
                   Write-Host "Processing work item $workItemId ($($environmentsForWorkItem.Count) environment(s) to delete)..."
 
-                  # Process all environments for this work item to delete all hyperlinks at once
+                  # Process all environments for this work item to delete all hyperlinks at once.
+                  # Only remove work-item relations after the corresponding environment was verified as owned
+                  # and successfully deleted, so a stale URL for another principal cannot be patched away.
+                  $deletedEnvironmentLinks = [System.Collections.ArrayList]@()
+                  $pipelineCreatedUrls = $null
                   foreach ($environmentToDelete in $environmentsForWorkItem) {
-                      $matchingEnvironment = $environments | Where-Object { 
-                          ([System.Uri]$_.Internal.properties.linkedEnvironmentMetadata.instanceUrl).Host -eq ([System.Uri]$environmentToDelete.url).Host }
+                      $linkHost = Get-UrlHost $environmentToDelete.url
+                      if (-not $linkHost) {
+                          continue
+                      }
 
-                      if ($matchingEnvironment) {
-                          Write-Host "Deleting $($matchingEnvironment.DisplayName)"
-                          try {
-                              Remove-AdminPowerAppEnvironment -EnvironmentName $matchingEnvironment.EnvironmentName | Out-Null
-                              Write-Host "Deleted environment for $workItemId."
+                      $matchingEnvironment = @($environments | Where-Object {
+                          (Get-UrlHost $_.Internal.properties.linkedEnvironmentMetadata.instanceUrl) -eq $linkHost })
+
+                      if ($matchingEnvironment.Count -eq 0) {
+                          # Stale link clean-up: the environment no longer exists (e.g. a previous run deleted it but
+                          # failed to remove the link). Only remove links created by this pipeline's identity whose
+                          # host does not belong to any environment visible to the service principal.
+                          if ($allEnvironmentHosts.Contains($linkHost)) {
+                              Write-Host "  ✗ $($environmentToDelete.url) belongs to an environment not owned by this pipeline; leaving link."
+                              continue
                           }
-                          catch {
-                              Write-Warning "Failed to delete $($matchingEnvironment.DisplayName)."
-                              Write-Warning $_
-                              return
+
+                          if ($null -eq $pipelineCreatedUrls) {
+                              try {
+                                  $pipelineCreatedUrls = Get-PipelineCreatedHyperlinkUrls -WorkItemId $workItemId
+                              }
+                              catch {
+                                  Write-Warning "Failed to retrieve history for work item $workItemId; leaving stale links."
+                                  Write-Warning $_
+                                  $pipelineCreatedUrls = [System.Collections.Generic.HashSet[string]]::new()
+                              }
                           }
+
+                          if ($pipelineCreatedUrls.Contains($environmentToDelete.url)) {
+                              Write-Host "  ✓ $($environmentToDelete.url) has no environment; removing stale link."
+                              $deletedEnvironmentLinks.Add($environmentToDelete) | Out-Null
+                          }
+                          else {
+                              Write-Host "  ✗ $($environmentToDelete.url) has no environment but was not created by this pipeline; leaving link."
+                          }
+                          continue
+                      }
+
+                      $matchingEnvironment = $matchingEnvironment[0]
+
+                      Write-Host "Deleting $($matchingEnvironment.DisplayName)"
+                      try {
+                          $removeResult = Remove-AdminPowerAppEnvironment -EnvironmentName $matchingEnvironment.EnvironmentName -ErrorAction Stop
+                          # The admin module can report API failures in its result object rather than as an error.
+                          if ($removeResult -and ($removeResult.Error -or ($removeResult.Code -as [int]) -ge 400)) {
+                              throw "Remove-AdminPowerAppEnvironment returned $($removeResult.Code): $($removeResult.Error | ConvertTo-Json -Compress -Depth 5)"
+                          }
+                          Write-Host "Deleted environment for $workItemId."
+                          $deletedEnvironmentLinks.Add($environmentToDelete) | Out-Null
+                      }
+                      catch {
+                          # Keep processing so links for environments already deleted in this group are still removed.
+                          Write-Warning "Failed to delete $($matchingEnvironment.DisplayName)."
+                          Write-Warning $_
+                          continue
                       }
                   }
 
-                  # Build a single PATCH document with all relation removals for this work item
-                  # Sort indices in descending order to avoid index shifting issues
-                  $sortedIndices = @($environmentsForWorkItem | Sort-Object -Property linkIndex -Descending | ForEach-Object { $_.linkIndex })
-                  
+                  if ($deletedEnvironmentLinks.Count -eq 0) {
+                      Write-Host "No owned or previously deleted environments found for work item $workItemId; skipping relation patch."
+                      return
+                  }
+ 
+                  # Build a single PATCH document with only the relation removals that were verified and deleted.
+                  # Sort indices in descending order to avoid index shifting issues.
+                  $sortedIndices = @($deletedEnvironmentLinks | Sort-Object -Property linkIndex -Descending | ForEach-Object { $_.linkIndex })
+                   
                   $patchDocument = @()
-                  
+                   
                   # Add one history entry for all deletions
                   $historyValue = "<div>Deleted development environments:</div><div><br></div>"
-                  $environmentsForWorkItem | ForEach-Object {
+                  $deletedEnvironmentLinks | ForEach-Object {
                       $historyValue += "<div><b>URL</b>: <a href=""$($_.url)"">$($_.url)</a></div>"
                   }
-                  
+                   
                   $patchDocument += @{
                       op    = "add"
                       path  = "/fields/System.History"
                       value = $historyValue
                   }
-                  
+                   
                   # Add all relation removals (in descending index order)
                   $sortedIndices | ForEach-Object {
                       $patchDocument += @{
@@ -329,7 +473,7 @@ stages:
                       Write-Warning $deleteRelationResponse.StatusDescription
                       return
                   }
-                  Write-Host "✓ Deleted $($environmentsForWorkItem.Count) work item hyperlink(s) for work item $workItemId."
+                  Write-Host "✓ Deleted $($sortedIndices.Count) work item hyperlink(s) for work item $workItemId."
               }
               Write-Host "Finished processing work items."
             displayName: Delete work item environments
@@ -338,3 +482,4 @@ stages:
               DELETEENVIRONMENTS_MANAGEMENTAPP_TENANTID: $(SetConnectionVariables.BuildTools.TenantId)
               DELETEENVIRONMENTS_MANAGEMENTAPP_APPLICATIONID: $(SetConnectionVariables.BuildTools.ApplicationId)
               DELETEENVIRONMENTS_MANAGEMENTAPP_CLIENTSECRET: $(SetConnectionVariables.BuildTools.ClientSecret)
+              DELETEENVIRONMENTS_SERVICEPRINCIPALOBJECTID: $(DeleteServicePrincipalObjectId)

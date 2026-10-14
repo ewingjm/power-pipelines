@@ -22,10 +22,26 @@ parameters:
     displayName: Variable prefix
     type: string
     default: Relation
+  - name: matrixVariableName
+    displayName: Optional output variable name for a job matrix of all matching URLs (also outputs <name>Count and <name>Urls)
+    type: string
+    default: ''
+  - name: additionalUrls
+    displayName: Optional additional URLs (newline, comma or semicolon separated) to include in the matrix
+    type: string
+    default: ''
   - name: stepName
     displayName: Step name
     type: string
     default: FindWorkItemHyperlink
+  - name: domainNamePrefix
+    displayName: When set, only matrix URLs of environments named with this prefix and created by the service connection's application are output
+    type: string
+    default: ''
+  - name: serviceConnection
+    displayName: Service connection used to verify environment ownership (required with domainNamePrefix)
+    type: string
+    default: ''
   - name: stepDisplayName
     displayName: Step display name
     type: string
@@ -36,17 +52,30 @@ parameters:
     default: succeeded()
 
 steps:
+  - ${{ if ne(parameters.domainNamePrefix, '') }}:
+    - task: PowerPlatformToolInstaller@2
+      displayName: Install Power Platform Build Tools
+    - task: PowerPlatformSetConnectionVariables@2
+      displayName: Set connection variables
+      name: SetFindConnectionVariables
+      inputs:
+        authenticationType: PowerPlatformSPN
+        PowerPlatformSPN: ${{ parameters.serviceConnection }}
+    - template: /templates/power-platform/steps/get-service-principal-object-id-steps.yml
+      parameters:
+        tenantId: $(SetFindConnectionVariables.BuildTools.TenantId)
+        applicationId: $(SetFindConnectionVariables.BuildTools.ApplicationId)
+        clientSecret: $(SetFindConnectionVariables.BuildTools.ClientSecret)
+        variableName: FindServicePrincipalObjectId
   - powershell: |
       function Test-ObjectSubset {
           param (
-              [PSObject] $Object1,
-              [PSObject] $Object2
+              $Object1,
+              $Object2
           )
 
-          if ($Object1 -is [string] -or $Object1 -is [int] -or $Object1 -is [double]) {
-            if ($Object1 -ne $Object2){
-              return $false
-            }
+          if ($Object1 -isnot [System.Management.Automation.PSCustomObject] -or $Object2 -isnot [System.Management.Automation.PSCustomObject]) {
+            return $Object1 -eq $Object2
           }
 
           $Object1Properties = $Object1 | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name
@@ -208,17 +237,27 @@ steps:
       Write-Host "Getting work items associated with pull request $env:FINDWORKITEMHYPERLINK_PULLREQUESTID."
       $workItemIds = Resolve-PullRequestWorkItemIds -Provider $env:BUILD_REPOSITORY_PROVIDER -PullRequestId $env:FINDWORKITEMHYPERLINK_PULLREQUESTID -WorkItemReferences $env:FINDWORKITEMHYPERLINK_WORKITEMREFERENCES
 
+      function Get-NormalisedUrl {
+          param(
+              [string]$Url
+          )
+
+          return $Url.Trim().TrimEnd('/').ToLowerInvariant()
+      }
+
+      $metadataQuery = $env:FINDWORKITEMHYPERLINK_METADATAQUERY | ConvertFrom-Json
+      $matchingRelations = @()
+
       foreach ($workItemId in $workItemIds) {
           Write-Host "Getting links for work item $workItemId."
           $workItem = az boards work-item show --id $workItemId --expand relations | ConvertFrom-Json
-          $relations = $workItem.relations | Where-Object rel -eq "Hyperlink" | Sort-Object -Property { $_.attributes.resourceCreatedDate } -Descending
+          $relations = @($workItem.relations | Where-Object rel -eq "Hyperlink")
 
           if ($relations.Count -eq 0) {
-              Write-Host "No work item hyperlinks found for work item $workItemId ."
+              Write-Host "No work item hyperlinks found for work item $workItemId."
               continue
           }
 
-          $metadataQuery = $env:FINDWORKITEMHYPERLINK_METADATAQUERY | ConvertFrom-Json
           foreach ($relation in $relations) {
               try {
                   $linkMetadata = $relation.attributes.comment | ConvertFrom-Json 
@@ -231,15 +270,121 @@ steps:
                   continue;
               }
 
-              Write-Host "Work item link found: $($relation.url)."
-              Write-Host "Expanding work item link to pipeline variables."
-              Set-VariablesFromObject -Object $relation -VariablePrefix $env:FINDWORKITEMHYPERLINK_VARIABLEPREFIX
-                
-              return
+              Write-Host "Matching work item link found on work item $($workItemId): $($relation.url)."
+              $matchingRelations += $relation
           }
       }
 
-      Write-Host "Pull request work item link not found."  
+      # A link may exist on several work items, so de-duplicate by URL and keep the newest.
+      $matchingRelations = @(
+          $matchingRelations |
+          Sort-Object -Property { $_.attributes.resourceCreatedDate } -Descending |
+          Group-Object -Property { Get-NormalisedUrl $_.url } |
+          ForEach-Object { $_.Group[0] } |
+          Sort-Object -Property { $_.attributes.resourceCreatedDate } -Descending
+      )
+
+      if ($matchingRelations.Count -gt 0) {
+          $newestRelation = $matchingRelations[0]
+          Write-Host "Found $($matchingRelations.Count) matching work item link(s). Newest: $($newestRelation.url)."
+          Write-Host "Expanding newest work item link to pipeline variables."
+          Set-VariablesFromObject -Object $newestRelation -VariablePrefix $env:FINDWORKITEMHYPERLINK_VARIABLEPREFIX
+      }
+      else {
+          Write-Host "Pull request work item link not found."
+      }
+
+      if (-not [string]::IsNullOrWhiteSpace($env:FINDWORKITEMHYPERLINK_MATRIXVARIABLENAME)) {
+          $urls = [System.Collections.Generic.List[string]]::new()
+          $seenUrls = [System.Collections.Generic.HashSet[string]]::new()
+
+          # Link metadata is editable, so ownership is established from the platform: the environment must
+          # match the expected name shape and have been created by this pipeline's service principal.
+          $trustedInstanceHosts = $null
+          if (-not [string]::IsNullOrWhiteSpace($env:FINDWORKITEMHYPERLINK_DOMAINNAMEPREFIX)) {
+              if (-not (Get-Module Microsoft.PowerApps.Administration.PowerShell -ListAvailable)) {
+                  Install-Module Microsoft.PowerApps.Administration.PowerShell -Scope CurrentUser -Force
+              }
+
+              Add-PowerAppsAccount -TenantID $env:FINDWORKITEMHYPERLINK_TENANTID -ApplicationId $env:FINDWORKITEMHYPERLINK_APPLICATIONID -ClientSecret $env:FINDWORKITEMHYPERLINK_CLIENTSECRET
+
+              $createdBy = $env:FINDWORKITEMHYPERLINK_SERVICEPRINCIPALOBJECTID
+              Write-Host "Only environments created by $createdBy will be trusted."
+
+              $hostPattern = "^$([regex]::Escape($env:FINDWORKITEMHYPERLINK_DOMAINNAMEPREFIX.ToLowerInvariant()))-\d+-\d+\.crm\d*\.dynamics\.com$"
+              $trustedInstanceHosts = @(
+                  Get-AdminPowerAppEnvironment |
+                  Where-Object { $_.Internal.properties.createdBy.id -eq $createdBy } |
+                  ForEach-Object {
+                      try { ([System.Uri]$_.Internal.properties.linkedEnvironmentMetadata.instanceUrl).Host.ToLowerInvariant() } catch { }
+                  } |
+                  Where-Object { $_ -and $_ -match $hostPattern } |
+                  Where-Object {
+                      # The host suffix is -<BuildId>-<JobAttempt>: if the build is still retained it must have run for this pull request.
+                      # Expired or missing builds are tolerated; a failed lookup is not, because it could hide an unrelated environment.
+                      $buildId = ($_ -split '\.')[0] -replace "^.*-(\d+)-\d+$", '$1'
+                      $buildOutput = az pipelines runs show --id $buildId 2>$null
+                      if ($LASTEXITCODE -ne 0) {
+                          Write-Warning "Unable to verify build $buildId for $_ because the Azure DevOps lookup failed; rejecting the environment."
+                          return $false
+                      }
+
+                      try {
+                          $build = $buildOutput | ConvertFrom-Json
+                      }
+                      catch {
+                          Write-Warning "Unable to parse build $buildId for $_; rejecting the environment because the lookup result is unusable."
+                          return $false
+                      }
+
+                      if (-not $build) {
+                          Write-Warning "Build $buildId for $_ is no longer available; relying on the creator check."
+                          return $true
+                      }
+                      if ($build.sourceBranch -ne "refs/pull/$($env:FINDWORKITEMHYPERLINK_PULLREQUESTID)/merge") {
+                          Write-Warning "Ignoring $_ as build $buildId did not run for pull request $($env:FINDWORKITEMHYPERLINK_PULLREQUESTID)."
+                          return $false
+                      }
+                      return $true
+                  }
+              )
+          }
+
+          $additionalUrls = "$env:FINDWORKITEMHYPERLINK_ADDITIONALURLS" -split '[\r\n,;]+' |
+              ForEach-Object { $_.Trim() } |
+              Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -notmatch '^\$\(.*\)$' }
+
+          foreach ($url in @($additionalUrls) + @($matchingRelations | ForEach-Object { $_.url })) {
+              if ([string]::IsNullOrWhiteSpace($url)) {
+                  continue
+              }
+
+              # $null on the left: an empty array on the left would filter to a falsy result and skip the ownership check.
+              if ($null -ne $trustedInstanceHosts) {
+                  try { $urlHost = ([System.Uri]$url.Trim()).Host.ToLowerInvariant() } catch { $urlHost = '' }
+                  if ($trustedInstanceHosts -notcontains $urlHost) {
+                      Write-Warning "Ignoring $url as it is not a validation environment created by this service connection."
+                      continue
+                  }
+              }
+
+              if ($seenUrls.Add((Get-NormalisedUrl $url))) {
+                  $urls.Add($url.Trim())
+              }
+          }
+
+          $matrix = [ordered]@{}
+          for ($i = 0; $i -lt $urls.Count; $i++) {
+              $matrix["Environment$($i + 1)"] = @{ EnvironmentUrl = $urls[$i] }
+          }
+
+          $matrixJson = if ($urls.Count -gt 0) { $matrix | ConvertTo-Json -Compress } else { '{"NoEnvironments":{"EnvironmentUrl":""}}' }
+          Write-Host "Found $($urls.Count) URL(s):"
+          $urls | ForEach-Object { Write-Host "`t$_" }
+          Write-Host "##vso[task.setvariable variable=$env:FINDWORKITEMHYPERLINK_MATRIXVARIABLENAME;isOutput=true]$matrixJson"
+          Write-Host "##vso[task.setvariable variable=$($env:FINDWORKITEMHYPERLINK_MATRIXVARIABLENAME)Count;isOutput=true]$($urls.Count)"
+          Write-Host "##vso[task.setvariable variable=$($env:FINDWORKITEMHYPERLINK_MATRIXVARIABLENAME)Urls;isOutput=true]$($urls -join ', ')"
+      }
     name: ${{ parameters.stepName }}
     displayName: ${{ parameters.stepDisplayName }}
     condition: ${{ parameters.condition }}
@@ -251,3 +396,11 @@ steps:
       FINDWORKITEMHYPERLINK_WORKITEMREFERENCES: ${{ parameters.workItemReferences }}
       FINDWORKITEMHYPERLINK_METADATAQUERY: ${{ convertToJson(parameters.metadataQuery) }}
       FINDWORKITEMHYPERLINK_VARIABLEPREFIX: ${{ parameters.variablePrefix }}
+      FINDWORKITEMHYPERLINK_MATRIXVARIABLENAME: ${{ parameters.matrixVariableName }}
+      FINDWORKITEMHYPERLINK_ADDITIONALURLS: ${{ parameters.additionalUrls }}
+      ${{ if ne(parameters.domainNamePrefix, '') }}:
+        FINDWORKITEMHYPERLINK_DOMAINNAMEPREFIX: ${{ parameters.domainNamePrefix }}
+        FINDWORKITEMHYPERLINK_TENANTID: $(SetFindConnectionVariables.BuildTools.TenantId)
+        FINDWORKITEMHYPERLINK_APPLICATIONID: $(SetFindConnectionVariables.BuildTools.ApplicationId)
+        FINDWORKITEMHYPERLINK_CLIENTSECRET: $(SetFindConnectionVariables.BuildTools.ClientSecret)
+        FINDWORKITEMHYPERLINK_SERVICEPRINCIPALOBJECTID: $(FindServicePrincipalObjectId)

@@ -258,33 +258,39 @@ Deletes environments (created by pipelines extending other templates in this rep
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | serviceConnection        | The Power Platform service connection to use. This should be a [management app](https://learn.microsoft.com/en-us/power-platform/admin/powershell-create-service-principal#registering-an-admin-management-application) service principal. |
 | categoryStates           | The [category states](https://learn.microsoft.com/en-us/azure-devops/boards/work-items/workflow-and-state-categories?view=azure-devops&tabs=agile-process#category-states) used to filter work items to delete related environments for.   |
-| metadata **[optional]**  | Used to filter which environments to delete based on additional metadata (see below).                                                                                                                                                      |
-| createdBy **[optional]** | Used to filter which environments to delete based on the Azure AD object ID of a principal that created them.                                                                                                                              |
+| metadata **[optional]**  | Used to filter which environments to delete based on additional metadata (see below). `repoId` defaults to the ID of the repository containing the pipeline that extends this template.                                              |
+| createdBy **[obsolete]** | Obsolete and ignored. The pipeline now only deletes environments created by the service principal of the service connection it runs as.                                                                                                    |
 
-It is recommended to run the pipeline(s) that extend this template on a fairly regular schedule (e.g. once per day). Ensure that the `categoryStates`, `metadata`, and `createdBy` filters are sufficient to avoid deleting environments unintentionally.
+Work item hyperlinks are editable, so they are never trusted on their own: the pipeline only deletes environments whose URL is a Dataverse host ending in the `-<number>-<number>` metadata suffix (values are not verified) and that were created by the service connection's own service principal. The pull request delete stage applies the same checks, and additionally requires the URL to match the `domainNamePrefix` shape.
+
+The pipeline also cleans up stale hyperlinks, for example when an environment was deleted but removing its hyperlink failed. A matching hyperlink is removed without deleting anything when two conditions hold. First, no environment visible to the service principal uses its host. Second, the work item history shows that the pipeline's build identity last added the hyperlink. Hyperlinks added by users, or whose host belongs to any visible environment, are left alone. This also reconciles stale hyperlinks left by the pull request delete stage, provided the work item is in one of the `categoryStates` and the hyperlink matches the `metadata` filter.
+
+The build identity is often shared across a project, and an environment created by another team's service principal is invisible to yours. To stop one team's clean-up from removing another team's hyperlinks to environments that still exist, the pipeline automatically adds `repoId: $(Build.Repository.ID)` to the `metadata` filter. This means it only considers hyperlinks created by pipelines in the same repository as the pipeline that extends this template. The create development environment and validate package pipelines record `repoId` on every hyperlink they add. To target a different repository, set `repoId` in `metadata` explicitly; explicit values are never overridden. A single clean-up pipeline can't span several repositories, so run one per repository.
+
+Because this pipeline can delete any environment created by its service principal, it is recommended to use separate service principals for different teams to ringfence their environments, and never to reuse a service principal that created production environments.
+
+It is recommended to run the pipeline(s) that extend this template on a fairly regular schedule (e.g. once per day). Ensure that the `categoryStates` and `metadata` filters are sufficient to avoid deleting environments unintentionally.
 
 You can pass the following to the `metadata` property.
 
-| Property    | Description                                                                      |
-| ----------- | -------------------------------------------------------------------------------- |
-| environment | The type of environment. Allowed values are: `development`.                      |
-| pipeline    | The name of the pipeline that created the environment.                           |
-| runId       | The ID of the pipeline run that created the environment.                         |
-| repo        | The name of the repository containing the pipeline that created the environment. |
-| repoId      | The ID of the repository containing the pipeline that created the environment.   |
-| repositoryProvider | The repository provider used by the pipeline run (for example `TfsGit` or `GitHub`). |
-| repositoryName | The repository name used by the pipeline run (for GitHub this is typically `owner/repository`). |
-| repositoryUri | The repository URI used by the pipeline run. |
+| Property      | Description                                                                                                                                  |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| environment   | The type of environment. Allowed values are: `development` (create development environment) and `validation` (validate package).            |
+| repoId        | The ID of the repository containing the pipeline that created the environment. Defaults to the ID of the repository containing this pipeline. |
+| runId         | The ID of the pipeline run that created the environment.                                                                                     |
+| commitHash    | The short commit hash of the package deployed to the environment.                                                                            |
+| solutionName  | The solution the development environment was created for. Recorded by the create development environment pipeline only.                     |
+| pullRequestId | The ID of the pull request being validated. Recorded by the validate package pipeline only.                                                  |
 
 For example:
 
 ```yaml
 metadata:
   environment: development
-  repo: contoso-sales
+  solutionName: contoso_Sales
 ```
 
-This will ensure that only environments created by the [Create development environment](#create-development-environment) pipeline template from a pipeline in the `contoso-sales` repository are deleted.
+This will ensure that only development environments created by the [Create development environment](#create-development-environment) pipeline template for the `contoso_Sales` solution, from a pipeline in the same repository as this pipeline, are deleted.
 
 ### Sync bulk deletes
 
