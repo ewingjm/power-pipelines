@@ -69,6 +69,7 @@ stages:
                 githubApiBaseUrl: ${{ parameters.githubApiBaseUrl }}
                 workItemReferences: ${{ parameters.workItemReferences }}
                 metadataQuery: 
+                  environment: validation
                   pullRequestId: $(System.PullRequest.PullRequestId)
         - template: ../jobs/analyse-updates-job.yml
           parameters:

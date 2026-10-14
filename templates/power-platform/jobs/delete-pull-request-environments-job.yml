@@ -1,0 +1,111 @@
+parameters:
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: url
+    type: string
+    displayName: Optional URL of an additional environment to delete (e.g. the current environment)
+    default: ''
+  - name: metadataQuery
+    displayName: Work item hyperlink metadata query used to find environments to delete
+    type: object
+  - name: pullRequestId
+    displayName: Pull request ID
+    type: string
+    default: $(System.PullRequest.PullRequestId)
+  - name: githubToken
+    displayName: Optional GitHub token for PR metadata
+    type: string
+    default: ''
+  - name: githubApiBaseUrl
+    displayName: GitHub API base URL
+    type: string
+    default: https://api.github.com
+  - name: workItemReferences
+    displayName: Optional AB# work item references
+    type: string
+    default: ''
+  - name: manualConfirmation
+    displayName: Manual confirmation
+    type: boolean
+    default: true
+  - name: jobName
+    displayName: Job name
+    type: string
+    default: DeleteEnvironments
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+
+jobs:
+  - job: ${{ format('Find{0}', parameters.jobName) }}
+    displayName: Find environments
+    dependsOn: ${{ parameters.dependsOn }}
+    ${{ if parameters.url }}:
+      variables:
+        DeleteEnvironments.Url: ${{ parameters.url }}
+    steps:
+      - checkout: none
+      - template: ../../azure-devops/steps/find-pull-request-work-item-hyperlink-steps.yml
+        parameters:
+          pullRequestId: ${{ parameters.pullRequestId }}
+          githubToken: ${{ parameters.githubToken }}
+          githubApiBaseUrl: ${{ parameters.githubApiBaseUrl }}
+          workItemReferences: ${{ parameters.workItemReferences }}
+          metadataQuery: ${{ parameters.metadataQuery }}
+          matrixVariableName: Environments
+          ${{ if parameters.url }}:
+            additionalUrls: $(DeleteEnvironments.Url)
+          stepDisplayName: Find environments
+  - ${{ if parameters.manualConfirmation }}:
+    - job: ${{ format('Confirm{0}', parameters.jobName) }}
+      displayName: Confirm deletion
+      pool: server
+      timeoutInMinutes: 8640
+      dependsOn: ${{ format('Find{0}', parameters.jobName) }}
+      condition: and(succeeded(), ne(dependencies.${{ format('Find{0}', parameters.jobName) }}.outputs['FindWorkItemHyperlink.EnvironmentsCount'], '0'))
+      variables:
+        DeleteEnvironments.Urls: $[ dependencies.${{ format('Find{0}', parameters.jobName) }}.outputs['FindWorkItemHyperlink.EnvironmentsUrls'] ]
+      steps:
+        - task: ManualValidation@0
+          displayName: Confirm deletion
+          timeoutInMinutes: 7200
+          inputs:
+            onTimeout: resume
+            instructions: Approve to delete the following environment(s) or reject to retain them - $(DeleteEnvironments.Urls)
+  - job: ${{ parameters.jobName }}
+    displayName: Delete environment
+    dependsOn:
+      - ${{ format('Find{0}', parameters.jobName) }}
+      - ${{ if parameters.manualConfirmation }}:
+        - ${{ format('Confirm{0}', parameters.jobName) }}
+    # An empty matrix is invalid, so skip when there is nothing to delete.
+    condition: and(succeeded(), ne(dependencies.${{ format('Find{0}', parameters.jobName) }}.outputs['FindWorkItemHyperlink.EnvironmentsCount'], '0'))
+    strategy:
+      matrix: $[ dependencies.${{ format('Find{0}', parameters.jobName) }}.outputs['FindWorkItemHyperlink.Environments'] ]
+    steps:
+      - checkout: none
+      - powershell: Write-Host "##vso[task.setvariable variable=BuildTools.EnvironmentUrl]$(EnvironmentUrl)"
+        displayName: Set environment URL
+      - task: PowerPlatformToolInstaller@2
+        displayName: Install Power Platform Build Tools
+        inputs:
+          DefaultVersion: true
+      - task: PowerPlatformDeleteEnvironment@2
+        displayName: Delete environment
+        continueOnError: true
+        inputs:
+          authenticationType: PowerPlatformSPN
+          PowerPlatformSPN: ${{ parameters.serviceConnection }}
+      - template: ../../azure-devops/steps/delete-pull-request-work-item-hyperlink-steps.yml
+        parameters:
+          pullRequestId: ${{ parameters.pullRequestId }}
+          githubToken: ${{ parameters.githubToken }}
+          githubApiBaseUrl: ${{ parameters.githubApiBaseUrl }}
+          workItemReferences: ${{ parameters.workItemReferences }}
+          url: $(EnvironmentUrl)
+          historyComment: >
+            <div>Deleted validation environment.</div>
+            <div><br></div>
+            <div><b>URL</b>: <a href="$(EnvironmentUrl)">$(EnvironmentUrl)</a></div>

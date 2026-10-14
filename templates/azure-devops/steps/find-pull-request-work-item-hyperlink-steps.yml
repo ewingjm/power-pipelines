@@ -22,6 +22,14 @@ parameters:
     displayName: Variable prefix
     type: string
     default: Relation
+  - name: matrixVariableName
+    displayName: Optional output variable name for a job matrix of all matching URLs (also outputs <name>Count and <name>Urls)
+    type: string
+    default: ''
+  - name: additionalUrls
+    displayName: Optional additional URLs (newline, comma or semicolon separated) to include in the matrix
+    type: string
+    default: ''
   - name: stepName
     displayName: Step name
     type: string
@@ -208,17 +216,27 @@ steps:
       Write-Host "Getting work items associated with pull request $env:FINDWORKITEMHYPERLINK_PULLREQUESTID."
       $workItemIds = Resolve-PullRequestWorkItemIds -Provider $env:BUILD_REPOSITORY_PROVIDER -PullRequestId $env:FINDWORKITEMHYPERLINK_PULLREQUESTID -WorkItemReferences $env:FINDWORKITEMHYPERLINK_WORKITEMREFERENCES
 
+      function Get-NormalisedUrl {
+          param(
+              [string]$Url
+          )
+
+          return $Url.Trim().TrimEnd('/').ToLowerInvariant()
+      }
+
+      $metadataQuery = $env:FINDWORKITEMHYPERLINK_METADATAQUERY | ConvertFrom-Json
+      $matchingRelations = @()
+
       foreach ($workItemId in $workItemIds) {
           Write-Host "Getting links for work item $workItemId."
           $workItem = az boards work-item show --id $workItemId --expand relations | ConvertFrom-Json
-          $relations = $workItem.relations | Where-Object rel -eq "Hyperlink" | Sort-Object -Property { $_.attributes.resourceCreatedDate } -Descending
+          $relations = @($workItem.relations | Where-Object rel -eq "Hyperlink")
 
           if ($relations.Count -eq 0) {
-              Write-Host "No work item hyperlinks found for work item $workItemId ."
+              Write-Host "No work item hyperlinks found for work item $workItemId."
               continue
           }
 
-          $metadataQuery = $env:FINDWORKITEMHYPERLINK_METADATAQUERY | ConvertFrom-Json
           foreach ($relation in $relations) {
               try {
                   $linkMetadata = $relation.attributes.comment | ConvertFrom-Json 
@@ -231,15 +249,60 @@ steps:
                   continue;
               }
 
-              Write-Host "Work item link found: $($relation.url)."
-              Write-Host "Expanding work item link to pipeline variables."
-              Set-VariablesFromObject -Object $relation -VariablePrefix $env:FINDWORKITEMHYPERLINK_VARIABLEPREFIX
-                
-              return
+              Write-Host "Matching work item link found on work item $($workItemId): $($relation.url)."
+              $matchingRelations += $relation
           }
       }
 
-      Write-Host "Pull request work item link not found."  
+      # A link may exist on several work items, so de-duplicate by URL and keep the newest.
+      $matchingRelations = @(
+          $matchingRelations |
+          Sort-Object -Property { $_.attributes.resourceCreatedDate } -Descending |
+          Group-Object -Property { Get-NormalisedUrl $_.url } |
+          ForEach-Object { $_.Group[0] } |
+          Sort-Object -Property { $_.attributes.resourceCreatedDate } -Descending
+      )
+
+      if ($matchingRelations.Count -gt 0) {
+          $newestRelation = $matchingRelations[0]
+          Write-Host "Found $($matchingRelations.Count) matching work item link(s). Newest: $($newestRelation.url)."
+          Write-Host "Expanding newest work item link to pipeline variables."
+          Set-VariablesFromObject -Object $newestRelation -VariablePrefix $env:FINDWORKITEMHYPERLINK_VARIABLEPREFIX
+      }
+      else {
+          Write-Host "Pull request work item link not found."
+      }
+
+      if (-not [string]::IsNullOrWhiteSpace($env:FINDWORKITEMHYPERLINK_MATRIXVARIABLENAME)) {
+          $urls = [System.Collections.Generic.List[string]]::new()
+          $seenUrls = [System.Collections.Generic.HashSet[string]]::new()
+
+          $additionalUrls = "$env:FINDWORKITEMHYPERLINK_ADDITIONALURLS" -split '[\r\n,;]+' |
+              ForEach-Object { $_.Trim() } |
+              Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and $_ -notmatch '^\$\(.*\)$' }
+
+          foreach ($url in @($additionalUrls) + @($matchingRelations | ForEach-Object { $_.url })) {
+              if ([string]::IsNullOrWhiteSpace($url)) {
+                  continue
+              }
+
+              if ($seenUrls.Add((Get-NormalisedUrl $url))) {
+                  $urls.Add($url.Trim())
+              }
+          }
+
+          $matrix = [ordered]@{}
+          for ($i = 0; $i -lt $urls.Count; $i++) {
+              $matrix["Environment$($i + 1)"] = @{ EnvironmentUrl = $urls[$i] }
+          }
+
+          $matrixJson = if ($urls.Count -gt 0) { $matrix | ConvertTo-Json -Compress } else { '{}' }
+          Write-Host "Found $($urls.Count) URL(s):"
+          $urls | ForEach-Object { Write-Host "`t$_" }
+          Write-Host "##vso[task.setvariable variable=$env:FINDWORKITEMHYPERLINK_MATRIXVARIABLENAME;isOutput=true]$matrixJson"
+          Write-Host "##vso[task.setvariable variable=$($env:FINDWORKITEMHYPERLINK_MATRIXVARIABLENAME)Count;isOutput=true]$($urls.Count)"
+          Write-Host "##vso[task.setvariable variable=$($env:FINDWORKITEMHYPERLINK_MATRIXVARIABLENAME)Urls;isOutput=true]$($urls -join ', ')"
+      }
     name: ${{ parameters.stepName }}
     displayName: ${{ parameters.stepDisplayName }}
     condition: ${{ parameters.condition }}
@@ -251,3 +314,5 @@ steps:
       FINDWORKITEMHYPERLINK_WORKITEMREFERENCES: ${{ parameters.workItemReferences }}
       FINDWORKITEMHYPERLINK_METADATAQUERY: ${{ convertToJson(parameters.metadataQuery) }}
       FINDWORKITEMHYPERLINK_VARIABLEPREFIX: ${{ parameters.variablePrefix }}
+      FINDWORKITEMHYPERLINK_MATRIXVARIABLENAME: ${{ parameters.matrixVariableName }}
+      FINDWORKITEMHYPERLINK_ADDITIONALURLS: ${{ parameters.additionalUrls }}
