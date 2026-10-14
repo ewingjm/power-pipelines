@@ -42,11 +42,11 @@ stages:
           - powershell: |
               function Test-ObjectSubset {
                 param (
-                    [PSObject] $Object1,
-                    [PSObject] $Object2
+                    $Object1,
+                    $Object2
                 )
 
-                if ($Object1 -isnot [PSObject] -or $Object2 -isnot [PSObject]) {
+                if ($Object1 -isnot [PSCustomObject] -or $Object2 -isnot [PSCustomObject]) {
                   return $Object1 -eq $Object2
                 }
 
@@ -213,7 +213,7 @@ stages:
 
                           Write-Host "  ✓ Matched: $($relation.url)"
                           $matchedCount++
-                          $environmentsToDelete.Add(@{
+                          $environmentsToDelete.Add([pscustomobject]@{
                                   workItemId = $workItemId
                                   url        = $relation.url
                                   linkIndex  = $workItem.relations.IndexOf($relation)
