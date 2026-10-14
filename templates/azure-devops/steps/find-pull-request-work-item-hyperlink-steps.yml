@@ -346,7 +346,8 @@ steps:
                   continue
               }
 
-              if ($trustedInstanceHosts -ne $null) {
+              # $null on the left: an empty array on the left would filter to a falsy result and skip the ownership check.
+              if ($null -ne $trustedInstanceHosts) {
                   try { $urlHost = ([System.Uri]$url.Trim()).Host.ToLowerInvariant() } catch { $urlHost = '' }
                   if ($trustedInstanceHosts -notcontains $urlHost) {
                       Write-Warning "Ignoring $url as it is not a validation environment created by this service connection."

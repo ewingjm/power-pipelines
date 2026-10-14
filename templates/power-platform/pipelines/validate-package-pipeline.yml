@@ -394,14 +394,13 @@ stages:
       url: $[ coalesce(stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'], stageDependencies.AnalyseUpdates.FindExistingEnvironment.outputs['FindWorkItemHyperlink.Relation.url']) ]
   - template: ../stages/delete-pull-request-environments-stage.yml
     parameters:
-      # Delete all of the pull request's validation environments once a newly created environment exists, or a reused existing environment has been validated.
+      # Delete all of the pull request's validation environments once an environment exists (new or reused). The outcome of manual validation is irrelevant as the delete stage has its own approval.
       condition: |
         or(
           ne(dependencies.CreateEnvironment.outputs['CreateEnvironment.PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'], ''),
           and(
             eq(dependencies.CreateEnvironment.result, 'Skipped'),
-            ne(dependencies.AnalyseUpdates.outputs['FindExistingEnvironment.FindWorkItemHyperlink.Relation.url'], ''),
-            in(dependencies.ManualValidation.result, 'Succeeded', 'SucceededWithIssues')
+            ne(dependencies.AnalyseUpdates.outputs['FindExistingEnvironment.FindWorkItemHyperlink.Relation.url'], '')
           )
         )
       dependsOn:
