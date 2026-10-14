@@ -366,7 +366,7 @@ steps:
               $matrix["Environment$($i + 1)"] = @{ EnvironmentUrl = $urls[$i] }
           }
 
-          $matrixJson = if ($urls.Count -gt 0) { $matrix | ConvertTo-Json -Compress } else { '{}' }
+          $matrixJson = if ($urls.Count -gt 0) { $matrix | ConvertTo-Json -Compress } else { '{"NoEnvironments":{"EnvironmentUrl":""}}' }
           Write-Host "Found $($urls.Count) URL(s):"
           $urls | ForEach-Object { Write-Host "`t$_" }
           Write-Host "##vso[task.setvariable variable=$env:FINDWORKITEMHYPERLINK_MATRIXVARIABLENAME;isOutput=true]$matrixJson"
