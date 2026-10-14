@@ -68,16 +68,14 @@ steps:
         clientSecret: $(SetFindConnectionVariables.BuildTools.ClientSecret)
         variableName: FindServicePrincipalObjectId
   - powershell: |
-      function Test-ObjectSubset {      function Test-ObjectSubset {
+      function Test-ObjectSubset {
           param (
-              [PSObject] $Object1,
-              [PSObject] $Object2
+              $Object1,
+              $Object2
           )
 
-          if ($Object1 -is [string] -or $Object1 -is [int] -or $Object1 -is [double]) {
-            if ($Object1 -ne $Object2){
-              return $false
-            }
+          if ($Object1 -isnot [System.Management.Automation.PSCustomObject] -or $Object2 -isnot [System.Management.Automation.PSCustomObject]) {
+            return $Object1 -eq $Object2
           }
 
           $Object1Properties = $Object1 | Get-Member -MemberType Properties | Select-Object -ExpandProperty Name

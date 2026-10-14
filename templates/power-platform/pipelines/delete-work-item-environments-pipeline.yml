@@ -46,7 +46,7 @@ stages:
                     $Object2
                 )
 
-                if ($Object1 -isnot [PSCustomObject] -or $Object2 -isnot [PSCustomObject]) {
+                if ($Object1 -isnot [System.Management.Automation.PSCustomObject] -or $Object2 -isnot [System.Management.Automation.PSCustomObject]) {
                   return $Object1 -eq $Object2
                 }
 
