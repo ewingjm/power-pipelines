@@ -219,18 +219,30 @@ At the time of writing, the packing of solution projects created via the Power A
 
 [`deploy-packages-pipeline.yml`](./pipelines/deploy-packages-pipeline.yml)
 
-Deploys one or more Package Deployer packages to an environment.
+Deploys one or more Package Deployer packages to one or more environments.
 
-[Example](./samples/pipelines/deploy-to-test.yml)
+[Example](./samples/pipelines/deploy-to-test.yml) | [Multi-environment example](./samples/pipelines/deploy-to-multiple-environments.yml)
 
 | Parameter                         | Description                                                                                                                                                         |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| serviceConnection                 | The Power Platform service connection to use.                                                                                                                       |
-| environment                       | The name of the environment to deploy to. Refer to [Environments](https://learn.microsoft.com/en-us/azure-devops/pipelines/process/environments?view=azure-devops). |
+| serviceConnection                 | The Power Platform service connection to use. Required unless every item in `environments` specifies its own `serviceConnection`.                                   |
+| environment                       | The name of the environment to deploy to. Refer to [Environments](https://learn.microsoft.com/en-us/azure-devops/pipelines/process/environments?view=azure-devops). Required unless `environments` is used. |
+| environments **[optional]**       | The environments to deploy to. When specified, `environment` is ignored. This is an object array - refer below for more information.                                |
 | packages                          | The package(s) to deploy. This is an object array - refer below for more information.                                                                               |
 | url **[optional]**                | The URL of the environment to deploy to. Defaults to the URL in the service connection.                                                                             |
 | tagSuccess **[optional]**         | Whether to tag the pipeline resources on a successful deployment with a `Deployed to <environment>` tag. Defaults to `false`.                                       |
 | postDeploymentJobs **[optional]** | Additional jobs that should be ran after the environment is deployed to.                                                                                            |
+| testJobs **[optional]**           | Additional jobs that should be ran in a test stage after each environment is deployed to.                                                                           |
+
+The `environments` parameter is an array of objects which can contain the below properties. Each environment gets its own deploy (and test) stage.
+
+| Property                     | Description                                                                                                                                                                  |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| environment                  | The name of the Azure DevOps environment to deploy to. This should be unique within the list.                                                                                |
+| serviceConnection **[optional]** | The Power Platform service connection for the environment. Defaults to the top-level `serviceConnection`.                                                                |
+| url **[optional]**           | The URL of the environment. Defaults to the top-level `url`, then the URL in the service connection.                                                                         |
+| variables **[optional]**     | Variables and/or variable groups for the environment's stages, in the pipeline [list syntax](https://learn.microsoft.com/en-us/azure/devops/pipelines/process/variables#specify-variables) (`- name:`/`value:` or `- group:`). |
+| dependsOn **[optional]**     | The names of other environments in the list that must be deployed to (and tested, if `testJobs` are specified) first. Environments without dependencies deploy in parallel. |
 
 The `packages` parameter is an array of objects which can contain the below properties
 

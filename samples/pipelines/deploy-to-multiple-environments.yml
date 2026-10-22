@@ -1,0 +1,46 @@
+name: $(SetAggregateRunNumber.RunNumber)
+
+pool:
+  vmImage: windows-latest
+
+trigger: none
+
+resources:
+  pipelines:
+    - pipeline: sales
+      source: power-platform-sales
+      branch: main
+  repositories:
+    - repository: power-pipelines
+      name: ewingjm/power-pipelines
+      ref: refs/heads/main 
+      type: github
+      endpoint: your-service-endpoint
+
+extends:
+  template: templates/power-platform/pipelines/deploy-packages-pipeline.yml@power-pipelines
+  parameters:
+    environments:
+      - environment: Test
+        serviceConnection: Contoso - Test
+        variables:
+          - group: Contoso Test
+      - environment: UAT
+        serviceConnection: Contoso - UAT
+        dependsOn:
+          - Test
+        variables:
+          - group: Contoso UAT
+          - name: Contoso.Region
+            value: UK
+      - environment: Production
+        serviceConnection: Contoso - Production
+        dependsOn:
+          - UAT
+        variables:
+          - group: Contoso Production
+    packages:
+      - resource: sales
+        artifact: package
+        file: Contoso.Sales.Deployment.dll
+    tagSuccess: true
