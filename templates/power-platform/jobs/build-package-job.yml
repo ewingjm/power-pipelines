@@ -100,8 +100,8 @@ jobs:
             projects: ${{ additionalProject.project }}
             arguments: >
               -c Release
-              -o "$(Build.ArtifactStagingDirectory))/${{ additionalProject.artifactName }}/"
-        - publish: $(Build.ArtifactStagingDirectory))/${{ additionalProject.artifactName }}
+              -o "$(Build.ArtifactStagingDirectory)/${{ additionalProject.artifactName }}/"
+        - publish: $(Build.ArtifactStagingDirectory)/${{ additionalProject.artifactName }}
           artifact: ${{ additionalProject.artifactName }}
           displayName: Publish ${{ additionalProject.artifactName }}
       - ${{ if parameters.unmanagedSolution }}:
@@ -121,7 +121,7 @@ jobs:
             arguments: >
               -c Debug
               -o "$(BuildPackage.SolutionOutputDirectory)"
-              /p:SolutionVersionStrategy=''
+              /p:SolutionVersionStrategy=
       - ${{ parameters.postBuildSteps }}
       - powershell: |
           $fileName = [System.IO.Path]::GetFileNameWithoutExtension($env:BUILDPACKAGE_PACKAGEPROJECT)
