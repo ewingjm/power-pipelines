@@ -1,0 +1,82 @@
+parameters:
+  - name: serviceConnection
+    displayName: Service connection
+    type: string
+  - name: domainNamePrefix
+    displayName: Domain name prefix of the validation environments
+    type: string
+  - name: url
+    type: string
+    displayName: Optional URL of an additional environment to delete (e.g. the current environment)
+    default: ''
+  - name: metadataQuery
+    displayName: Work item hyperlink metadata query used to find environments to delete
+    type: object
+    default:
+      environment: validation
+      pullRequestId: $(System.PullRequest.PullRequestId)
+      repoId: $(Build.Repository.ID)
+  - name: pullRequestId
+    displayName: Pull request ID
+    type: string
+    default: $(System.PullRequest.PullRequestId)
+  - name: githubToken
+    displayName: Optional GitHub token for PR metadata
+    type: string
+    default: ''
+  - name: githubApiBaseUrl
+    displayName: GitHub API base URL
+    type: string
+    default: https://api.github.com
+  - name: workItemReferences
+    displayName: Optional AB# work item references
+    type: string
+    default: ''
+  - name: manualConfirmation
+    displayName: Manual confirmation
+    type: boolean
+    default: true
+  - name: postDeleteJobs
+    displayName: Post-delete jobs
+    type: jobList
+    default: []
+  - name: stageName
+    displayName: Stage name
+    type: string
+    default: DeleteEnvironments
+  - name: dependsOn
+    displayName: Depends on
+    type: object
+    default: []
+  - name: condition
+    displayName: Condition
+    type: string
+    default: succeeded()
+
+stages:
+  - stage: ${{ parameters.stageName }}
+    displayName: Delete environments
+    ${{ if gt(length(parameters.dependsOn), 0) }}:
+      dependsOn: ${{ parameters.dependsOn }}
+    condition: ${{ parameters.condition }}
+    jobs:
+      - template: ../jobs/delete-pull-request-environments-job.yml
+        parameters:
+          serviceConnection: ${{ parameters.serviceConnection }}
+          domainNamePrefix: ${{ parameters.domainNamePrefix }}
+          url: ${{ parameters.url }}
+          metadataQuery: ${{ parameters.metadataQuery }}
+          pullRequestId: ${{ parameters.pullRequestId }}
+          githubToken: ${{ parameters.githubToken }}
+          githubApiBaseUrl: ${{ parameters.githubApiBaseUrl }}
+          workItemReferences: ${{ parameters.workItemReferences }}
+          manualConfirmation: ${{ parameters.manualConfirmation }}
+          jobName: DeleteEnvironments
+      - ${{ each job in parameters.postDeleteJobs }}:
+        - ${{ each pair in job }}:
+            ${{ if ne(pair.key, 'dependsOn') }}:
+              ${{ pair.key }}: ${{ pair.value }}
+          dependsOn:
+            - DeleteEnvironments
+            - ${{ if job.dependsOn }}:
+              - ${{ job.dependsOn }}

@@ -168,7 +168,7 @@ stages:
             ),
             and(
               ne(dependencies.AnalyseUpdates.outputs['FindExistingEnvironment.FindWorkItemHyperlink.Relation.attributes.comment.commitHash'], ''),
-              eq(dependencies.AnalyseEnvironmentUpdates.outputs['AnalyseUpdates.GetSolutionUpdates.Solution.IsUpdated'], 'true')
+              eq(dependencies.AnalyseUpdates.outputs['AnalyseEnvironmentUpdates.GetSolutionUpdates.Solution.IsUpdated'], 'true')
             )
           )
         )
@@ -197,8 +197,8 @@ stages:
             and(
               ne(dependencies.AnalyseUpdates.outputs['FindExistingEnvironment.FindWorkItemHyperlink.Relation.attributes.comment.commitHash'], ''),
               or(
-                eq(dependencies.AnalyseEnvironmentUpdates.outputs['AnalyseUpdates.GetSolutionUpdates.Solution.IsUpdated'], 'True'), 
-                eq(dependencies.AnalyseEnvironmentUpdates.outputs['AnalyseUpdates.GetPackageTemplateUpdated.IsUpdated'], 'True')
+                eq(dependencies.AnalyseUpdates.outputs['AnalyseEnvironmentUpdates.GetSolutionUpdates.Solution.IsUpdated'], 'True'), 
+                eq(dependencies.AnalyseUpdates.outputs['AnalyseEnvironmentUpdates.GetPackageTemplateUpdated.IsUpdated'], 'True')
               )
             )
           )
@@ -327,6 +327,7 @@ stages:
   - ${{ if gt(length(parameters.testJobs), 0) }}:
     - stage: Test
       displayName: Test
+      # Existing/fallback environments are only used when environment creation was skipped (no updates), never when it failed.
       ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
         condition: |
           and(
@@ -334,8 +335,13 @@ stages:
             or(
               succeeded('FinaliseEnvironment'),
               and(
-                succeeded('AnalyseUpdates'), 
-                ne(variables['Test.FallbackEnvironment.Url'], '')
+                succeeded('AnalyseUpdates'),
+                not(failed('SolutionChecker')),
+                eq(dependencies.CreateEnvironment.result, 'Skipped'),
+                or(
+                  ne(dependencies.AnalyseUpdates.outputs['FindExistingEnvironment.FindWorkItemHyperlink.Relation.url'], ''),
+                  ne('${{ parameters.fallbackTestEnvironmentUrl }}', '')
+                )
               )
             ) 
           )
@@ -346,13 +352,19 @@ stages:
             or(
               succeeded('DeployPackage'),
               and(
-                succeeded('AnalyseUpdates'), 
-                ne(variables['Test.FallbackEnvironment.Url'], '')
+                succeeded('AnalyseUpdates'),
+                not(failed('SolutionChecker')),
+                eq(dependencies.CreateEnvironment.result, 'Skipped'),
+                or(
+                  ne(dependencies.AnalyseUpdates.outputs['FindExistingEnvironment.FindWorkItemHyperlink.Relation.url'], ''),
+                  ne('${{ parameters.fallbackTestEnvironmentUrl }}', '')
+                )
               )
             ) 
           )
       dependsOn:
         - AnalyseUpdates
+        - SolutionChecker
         - CreateEnvironment
         - DeployPackage
         - ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
@@ -361,7 +373,7 @@ stages:
         Test.NewEnvironment.Url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
         Test.FallbackEnvironment.Url: ${{ parameters.fallbackTestEnvironmentUrl }}
         Test.ExistingEnvironment.Url: $[ stageDependencies.AnalyseUpdates.FindExistingEnvironment.outputs['FindWorkItemHyperlink.Relation.url'] ]
-        BuildTools.EnvironmentUrl: $[ coalesce(variables['Test.ExistingEnvironment.Url'], variables['Test.NewEnvironment.Url'], variables['Test.FallbackEnvironment.Url']) ]
+        BuildTools.EnvironmentUrl: $[ coalesce(variables['Test.NewEnvironment.Url'], variables['Test.ExistingEnvironment.Url'], variables['Test.FallbackEnvironment.Url']) ]
       jobs: ${{ parameters.testJobs }}
   - template: ../stages/wait-for-manual-validation-stage.yml
     parameters:
@@ -372,37 +384,37 @@ stages:
       ${{ if and(eq(length(parameters.testJobs), 0), eq(length(parameters.finaliseEnvironmentJobs), 0)) }}:
         condition: succeeded('DeployPackage')
       dependsOn: 
+        - AnalyseUpdates
         - CreateEnvironment
         - DeployPackage
         - ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
           - FinaliseEnvironment
         - ${{ if gt(length(parameters.testJobs), 0) }}:
           - Test
-      url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
-  - template: ../stages/delete-environment-stage.yml
+      url: $[ coalesce(stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'], stageDependencies.AnalyseUpdates.FindExistingEnvironment.outputs['FindWorkItemHyperlink.Relation.url']) ]
+  - template: ../stages/delete-pull-request-environments-stage.yml
     parameters:
-      condition: not(eq(dependencies.CreateEnvironment.outputs['CreateEnvironment.PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'], ''))
+      # Delete all of the pull request's validation environments once an environment exists (new or reused). The outcome of manual validation is irrelevant as the delete stage has its own approval.
+      condition: |
+        or(
+          ne(dependencies.CreateEnvironment.outputs['CreateEnvironment.PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'], ''),
+          and(
+            eq(dependencies.CreateEnvironment.result, 'Skipped'),
+            ne(dependencies.AnalyseUpdates.outputs['FindExistingEnvironment.FindWorkItemHyperlink.Relation.url'], '')
+          )
+        )
       dependsOn:
+        - AnalyseUpdates
         - CreateEnvironment
         - ManualValidation
       serviceConnection: ${{ parameters.serviceConnection }}
-      url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
-      postDeleteJobs:
-        - job: DeleteWorkItemLinks
-          displayName: Delete work item links
-          dependsOn: DeleteEnvironment
-          variables:
-            DeleteWorkItemLinks.Url: $[ stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'] ]
-          steps:
-            - checkout: none
-            - template: ../../azure-devops/steps/delete-pull-request-work-item-hyperlink-steps.yml
-              parameters:
-                pullRequestId: $(System.PullRequest.PullRequestId)
-                githubToken: ${{ parameters.githubToken }}
-                githubApiBaseUrl: ${{ parameters.githubApiBaseUrl }}
-                workItemReferences: ${{ parameters.workItemReferences }}
-                url: $(DeleteWorkItemLinks.Url)
-                historyComment: >
-                  <div>Deleted validation environment.</div>
-                  <div><br></div>
-                  <div><b>URL</b>: <a href="$(DeleteWorkItemLinks.Url)">$(DeleteWorkItemLinks.Url)</a></div>
+      domainNamePrefix: ${{ parameters.domainNamePrefix }}
+      url: $[ coalesce(stageDependencies.CreateEnvironment.CreateEnvironment.outputs['PowerPlatformCreateEnvironment.BuildTools.EnvironmentUrl'], stageDependencies.AnalyseUpdates.FindExistingEnvironment.outputs['FindWorkItemHyperlink.Relation.url']) ]
+      metadataQuery:
+        environment: validation
+        pullRequestId: $(System.PullRequest.PullRequestId)
+        repoId: $(Build.Repository.ID)
+      pullRequestId: $(System.PullRequest.PullRequestId)
+      githubToken: ${{ parameters.githubToken }}
+      githubApiBaseUrl: ${{ parameters.githubApiBaseUrl }}
+      workItemReferences: ${{ parameters.workItemReferences }}

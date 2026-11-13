@@ -1,0 +1,43 @@
+parameters:
+  - name: tenantId
+    displayName: Tenant ID (typically a $(<step>.BuildTools.TenantId) macro)
+    type: string
+  - name: applicationId
+    displayName: Application ID (typically a $(<step>.BuildTools.ApplicationId) macro)
+    type: string
+  - name: clientSecret
+    displayName: Client secret (typically a $(<step>.BuildTools.ClientSecret) macro)
+    type: string
+  - name: variableName
+    displayName: Name of the pipeline variable to set to the service principal's Entra object ID
+    type: string
+    default: ServicePrincipalObjectId
+  - name: stepDisplayName
+    displayName: Step display name
+    type: string
+    default: Get service principal object ID
+
+steps:
+  - powershell: |
+      # The createdBy of a Power Platform environment is the service principal's Entra object ID (the token's oid claim), not its application ID.
+      $tokenResponse = Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$($env:GETOBJECTID_TENANTID)/oauth2/v2.0/token" -Body @{
+          grant_type    = 'client_credentials'
+          client_id     = $env:GETOBJECTID_APPLICATIONID
+          client_secret = $env:GETOBJECTID_CLIENTSECRET
+          scope         = 'https://service.powerapps.com/.default'
+      }
+      $payload = $tokenResponse.access_token.Split('.')[1].Replace('-', '+').Replace('_', '/')
+      $payload += '=' * ((4 - $payload.Length % 4) % 4)
+      $objectId = ([System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) | ConvertFrom-Json).oid
+      if ([string]::IsNullOrWhiteSpace($objectId)) {
+          throw "Unable to determine the object ID of the service principal."
+      }
+
+      Write-Host "Service principal object ID: $objectId"
+      Write-Host "##vso[task.setvariable variable=$($env:GETOBJECTID_VARIABLENAME)]$objectId"
+    displayName: ${{ parameters.stepDisplayName }}
+    env:
+      GETOBJECTID_TENANTID: ${{ parameters.tenantId }}
+      GETOBJECTID_APPLICATIONID: ${{ parameters.applicationId }}
+      GETOBJECTID_CLIENTSECRET: ${{ parameters.clientSecret }}
+      GETOBJECTID_VARIABLENAME: ${{ parameters.variableName }}

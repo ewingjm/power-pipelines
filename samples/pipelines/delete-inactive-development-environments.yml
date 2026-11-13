@@ -30,4 +30,3 @@ extends:
     metadata:
       environment: development
       repoId: contoso-sales
-    createdby: 1c0e6ba5-cf1d-4cb9-90a2-984ccf5b9a6d
