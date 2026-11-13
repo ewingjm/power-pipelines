@@ -180,6 +180,8 @@ The `additionalPatterns` parameter can be used for any scenarios not covered abo
 | filePatterns    | An array of strings. File patterns to identify when an update occurs. Supports `*` as a wildcard. |
 | stepName        | The name of the step. Used to refer to the output variable created for this step.                 |
 | stepDisplayName | The display name of the step.                                                                     |
+| triggerEnvironmentCreation **[optional]** | A boolean. When `true`, a matching update causes a new environment to be created and the remaining stages (deploy, test, etc.) to run when the pull request has no environment yet. Defaults to `false`. |
+| triggerEnvironmentUpdate **[optional]** | A boolean. When `true`, a matching update causes an existing environment to be redeployed to. Defaults to `false`. Leave this off for patterns such as test-only changes that should run in a new environment but don't need to be deployed to an existing one. |
 
 To refer to the output variables created by patterns passed with `additionalPatterns`, use `<stepName>.IsUpdated`.
 

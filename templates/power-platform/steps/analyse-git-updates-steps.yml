@@ -5,6 +5,10 @@ parameters:
   - name: filePatterns
     displayName: File patterns
     type: object
+  - name: targetRef
+    displayName: Target branch commit the environment was built from
+    type: string
+    default: ''
   - name: stepName
     displayName: Step name
     type: string
@@ -22,7 +26,28 @@ steps:
   - powershell: |
       $repositoryRoot = git rev-parse --show-toplevel
       
-      if ($env:GETISUPDATED_REF -match '^[0-9a-f]{7}$') {
+      if ($env:GETISUPDATED_REF -match '^[0-9a-f]{7}$' -and $env:GETISUPDATED_TARGETREF -match '^[0-9a-f]{7}$') {
+        # Existing environment: it was built from a source commit merged with a target commit.
+        # Updates are anything changed on the source branch OR the target branch since then.
+        $sourceNow = if ($env:SYSTEM_PULLREQUEST_SOURCECOMMITID) { $env:SYSTEM_PULLREQUEST_SOURCECOMMITID } else { 'HEAD' }
+        $currentParents = @((git rev-list --parents -n 1 HEAD) -split ' ')
+        $targetNow = if ($currentParents.Count -eq 3) { $currentParents[1] } else { "origin/$env:SYSTEM_PULLREQUEST_TARGETBRANCHNAME" }
+      
+        Write-Host "Comparing source $env:GETISUPDATED_REF with $sourceNow and target $env:GETISUPDATED_TARGETREF with $targetNow."
+        $sourceFiles = git diff --name-only $env:GETISUPDATED_REF $sourceNow
+        $sourceExit = $LASTEXITCODE
+        $targetFiles = git diff --name-only $env:GETISUPDATED_TARGETREF $targetNow
+        $targetExit = $LASTEXITCODE
+      
+        if ($sourceExit -ne 0 -or $targetExit -ne 0) {
+          Write-Warning "Unable to compare with the environment's commits. Treating all files as updated."
+          $updatedFiles = git ls-tree -r --name-only HEAD | ForEach-Object { "$repositoryRoot/$_" }
+        }
+        else {
+          $updatedFiles = @($sourceFiles) + @($targetFiles) | Sort-Object -Unique | ForEach-Object { "$repositoryRoot/$_" }
+        }
+      }
+      elseif ($env:GETISUPDATED_REF -match '^[0-9a-f]{7}$') {
         Write-Host "Comparing HEAD with $env:GETISUPDATED_REF."
         $updatedFiles = git diff --name-only "HEAD..$env:GETISUPDATED_REF" | ForEach-Object { "$repositoryRoot/$_" }
       }
@@ -59,4 +84,5 @@ steps:
     workingDirectory: ${{ parameters.repository }}
     env:
       GETISUPDATED_REF: ${{ parameters.ref }}
+      GETISUPDATED_TARGETREF: ${{ parameters.targetRef }}
       GETISUPDATED_PATTERNS: ${{ join(',', parameters.filePatterns) }}  

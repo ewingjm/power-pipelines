@@ -76,6 +76,7 @@ stages:
               - FindExistingEnvironment
             condition: and(succeeded(), ne(dependencies.FindExistingEnvironment.outputs['FindWorkItemHyperlink.Relation.attributes.comment.commitHash'], ''))
             ref: $[ dependencies.FindExistingEnvironment.outputs['FindWorkItemHyperlink.Relation.attributes.comment.commitHash'] ]
+            targetRef: $[ dependencies.FindExistingEnvironment.outputs['FindWorkItemHyperlink.Relation.attributes.comment.targetCommitHash'] ]
             jobName: AnalyseEnvironmentUpdates
             jobDisplayName: Analyse environment updates
             solutionSourcePattern: ${{ parameters.solutionSourcePattern }}
