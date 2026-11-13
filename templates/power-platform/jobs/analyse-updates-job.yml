@@ -2,6 +2,10 @@ parameters:
   - name: ref
     displayName: Ref
     type: string
+  - name: targetRef
+    displayName: Target branch commit the environment was built from
+    type: string
+    default: ''
   - name: solutionSourcePattern
     displayName: Solution source pattern
     type: string
@@ -45,6 +49,7 @@ jobs:
     condition: ${{ parameters.condition }}
     variables:
       AnalyseUpdates.Ref: ${{ parameters.ref }}
+      AnalyseUpdates.TargetRef: ${{ parameters.targetRef }}
       AnalyseUpdates.Repo: ${{ parameters.repository }}
     steps:
       - checkout: self
@@ -52,6 +57,7 @@ jobs:
       - template: ../steps/analyse-git-solution-updates-steps.yml
         parameters:
           ref: $(AnalyseUpdates.Ref)
+          targetRef: $(AnalyseUpdates.TargetRef)
           solutionSourcePattern: ${{ parameters.solutionSourcePattern }}
           webResourceSourcePatterns: ${{ parameters.webResourceSourcePatterns }}
           assemblySourcePatterns: ${{ parameters.assemblySourcePatterns }}
@@ -60,7 +66,36 @@ jobs:
         - template: ../steps/analyse-git-updates-steps.yml
           parameters:
             ref: $(AnalyseUpdates.Ref)
+            targetRef: $(AnalyseUpdates.TargetRef)
             filePatterns: ${{ pattern.filePatterns }}
             stepName: ${{ pattern.stepName }}
             stepDisplayName: ${{ pattern.stepDisplayName }}
             repository: ${{ parameters.repository }}
+      - powershell: |
+          function Test-Triggered($prefix) {
+            $triggered = $false
+            Get-ChildItem env: | Where-Object { $_.Name -like "$($prefix)_*" } | ForEach-Object {
+              Write-Host "$($_.Name): $($_.Value)"
+              if ($_.Value -eq 'True') { $triggered = $true }
+            }
+
+            return $triggered
+          }
+
+          $creationTriggered = Test-Triggered 'ENVCREATE'
+          $updateTriggered = Test-Triggered 'ENVUPDATE'
+
+          Write-Host "`nEnvironment creation triggered by additional patterns: $creationTriggered."
+          Write-Host "Environment update triggered by additional patterns: $updateTriggered."
+          Write-Host "##vso[task.setvariable variable=CreationTriggered;isOutput=true]$creationTriggered"
+          Write-Host "##vso[task.setvariable variable=UpdateTriggered;isOutput=true]$updateTriggered"
+        displayName: Get environment triggers from additional patterns
+        name: GetAdditionalEnvironmentTriggers
+        env:
+          ENVCREATE_NONE: 'False'
+          ENVUPDATE_NONE: 'False'
+          ${{ each pattern in parameters.additionalPatterns }}:
+            ${{ if eq(pattern.triggerenvironmentCreate, true) }}:
+              ENVCREATE_${{ upper(pattern.stepName) }}: $(${{ pattern.stepName }}.IsUpdated)
+            ${{ if eq(pattern.triggerEnvironmentUpdate, true) }}:
+              ENVUPDATE_${{ upper(pattern.stepName) }}: $(${{ pattern.stepName }}.IsUpdated)

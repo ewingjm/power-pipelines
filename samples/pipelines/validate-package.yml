@@ -32,6 +32,13 @@ extends:
     assemblySourcePatterns:
       - src/common/*
       - src/plugins/*
+    additionalPatterns:
+      - filePatterns:
+          - src/config/*
+        stepName: GetConfigUpdated
+        stepDisplayName: Get config updated
+        triggerenvironmentCreate: true
+        triggerEnvironmentUpdate: true
     displayNamePrefix: CONTOSO-SALES-DEV
     domainNamePrefix: contoso-sales-dev
     templates: D365_Sales

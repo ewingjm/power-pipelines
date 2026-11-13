@@ -54,11 +54,11 @@ jobs:
     steps:
       - checkout: self
         fetchDepth: 0
-      - task: gitversion/setup@0
+      - task: gitversion/setup@3
         displayName: Install GitVersion
         inputs:
           versionSpec: '5.x'
-      - task: gitversion/execute@0
+      - task: gitversion/execute@3
         displayName: Execute GitVersion
         inputs:
           useConfigFile: true
@@ -144,6 +144,20 @@ jobs:
           }
 
           Write-Host "##vso[task.setvariable variable=CommitHash;isOutput=true]$($commit.Substring(0, 7))"
+
+          # The target branch commit that the build was merged with (first parent of a PR merge commit).
+          $targetCommit = ''
+          $parents = @((git rev-list --parents -n 1 HEAD) -split ' ')
+          if ($parents.Count -eq 3) {
+            $targetCommit = $parents[1]
+          }
+          elseif ($env:SYSTEM_PULLREQUEST_TARGETBRANCHNAME) {
+            $targetCommit = (git rev-parse "origin/$env:SYSTEM_PULLREQUEST_TARGETBRANCHNAME" 2>$null)
+          }
+
+          if ($targetCommit -and $targetCommit.Length -ge 7) {
+            Write-Host "##vso[task.setvariable variable=TargetCommitHash;isOutput=true]$($targetCommit.Substring(0, 7))"
+          }
         displayName: Get short commit hash
         name: GetShortCommitHash
       - publish: $(BuildPackage.OutputDirectory)

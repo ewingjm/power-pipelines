@@ -13,6 +13,10 @@ parameters:
     displayName: Assembly source patterns
     type: object
     default: []
+  - name: targetRef
+    displayName: Target branch commit the environment was built from
+    type: string
+    default: ''
   - name: repository
     displayName: Repository
     type: string
@@ -65,7 +69,28 @@ steps:
         $backendPatterns += ($AssemblySourcePatterns | ForEach-Object { "$repositoryRoot/$_" })
       }
       
-      if ($env:GETSOLUTIONUPDATES_REF -match '^[0-9a-f]{7}$') {
+      if ($env:GETSOLUTIONUPDATES_REF -match '^[0-9a-f]{7}$' -and $env:GETSOLUTIONUPDATES_TARGETREF -match '^[0-9a-f]{7}$') {
+        # Existing environment: it was built from a source commit merged with a target commit.
+        # Updates are anything changed on the source branch OR the target branch since then.
+        $sourceNow = if ($env:SYSTEM_PULLREQUEST_SOURCECOMMITID) { $env:SYSTEM_PULLREQUEST_SOURCECOMMITID } else { 'HEAD' }
+        $currentParents = @((git rev-list --parents -n 1 HEAD) -split ' ')
+        $targetNow = if ($currentParents.Count -eq 3) { $currentParents[1] } else { "origin/$env:SYSTEM_PULLREQUEST_TARGETBRANCHNAME" }
+      
+        Write-Host "Comparing source $env:GETSOLUTIONUPDATES_REF with $sourceNow and target $env:GETSOLUTIONUPDATES_TARGETREF with $targetNow."
+        $sourceFiles = git diff --name-only $env:GETSOLUTIONUPDATES_REF $sourceNow
+        $sourceExit = $LASTEXITCODE
+        $targetFiles = git diff --name-only $env:GETSOLUTIONUPDATES_TARGETREF $targetNow
+        $targetExit = $LASTEXITCODE
+      
+        if ($sourceExit -ne 0 -or $targetExit -ne 0) {
+          Write-Warning "Unable to compare with the environment's commits. Treating all files as updated."
+          $updatedFiles = git ls-tree -r --name-only HEAD | ForEach-Object { "$repositoryRoot/$_" }
+        }
+        else {
+          $updatedFiles = @($sourceFiles) + @($targetFiles) | Sort-Object -Unique | ForEach-Object { "$repositoryRoot/$_" }
+        }
+      }
+      elseif ($env:GETSOLUTIONUPDATES_REF -match '^[0-9a-f]{7}$') {
         Write-Host "Comparing HEAD with $env:GETSOLUTIONUPDATES_REF."
         $updatedFiles = git diff --name-only "HEAD..$env:GETSOLUTIONUPDATES_REF" | ForEach-Object { "$repositoryRoot/$_" }
       }
@@ -112,6 +137,7 @@ steps:
     workingDirectory: ${{ parameters.repository }}
     env:
       GETSOLUTIONUPDATES_REF: ${{ parameters.ref }}
+      GETSOLUTIONUPDATES_TARGETREF: ${{ parameters.targetRef }}
       GETSOLUTIONUPDATES_PATTERNS_SOLUTIONMETADATA: ${{ parameters.solutionSourcePattern }}
       GETSOLUTIONUPDATES_PATTERNS_WEBRESOURCES: ${{ join(',', parameters.webResourceSourcePatterns) }}
       GETSOLUTIONUPDATES_PATTERNS_ASSEMBLIES: ${{ join(',', parameters.assemblySourcePatterns) }}

@@ -180,6 +180,8 @@ The `additionalPatterns` parameter can be used for any scenarios not covered abo
 | filePatterns    | An array of strings. File patterns to identify when an update occurs. Supports `*` as a wildcard. |
 | stepName        | The name of the step. Used to refer to the output variable created for this step.                 |
 | stepDisplayName | The display name of the step.                                                                     |
+| triggerenvironmentCreate **[optional]** | A boolean. When `true`, a matching update causes a new environment to be created and the remaining stages (deploy, test, etc.) to run when the pull request has no environment yet. Defaults to `false`. |
+| triggerEnvironmentUpdate **[optional]** | A boolean. When `true`, a matching update causes an existing environment to be redeployed to. Defaults to `false`. Leave this off for patterns such as test-only changes that should run in a new environment but don't need to be deployed to an existing one. |
 
 To refer to the output variables created by patterns passed with `additionalPatterns`, use `<stepName>.IsUpdated`.
 
@@ -202,7 +204,7 @@ Builds a Package Deployer package (i.e. a package project that has been created 
 
 The managed package is published as an artifact named `package`.
 
-This template uses GitVersion to version the build. Please ensure that you have a properly configured GitVersion.yml file in the root of your repository. Below is an example GitVersion.yml that uses GitVersion's [mainline](https://gitversion.net/docs/reference/modes/mainline) mode [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). This approach assumes you keep your main branch deployable to production at all times (recommended).
+This template uses GitVersion 5.x to version the build. Please ensure that you have a properly configured GitVersion.yml file in the root of your repository. Below is an example GitVersion.yml that uses GitVersion's [mainline](https://gitversion.net/docs/reference/modes/mainline) mode [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). This approach assumes you keep your main branch deployable to production at all times (recommended).
 
 ```yaml
 mode: mainline
