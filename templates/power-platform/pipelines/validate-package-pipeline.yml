@@ -286,6 +286,7 @@ stages:
       dependsOn: 
         - AnalyseUpdates
         - BuildPackage
+        - SolutionChecker
         - CreateEnvironment
         - PrepareEnvironment
       environment: Power Platform - Ephemeral
@@ -382,6 +383,13 @@ stages:
               and(
                 succeeded('AnalyseUpdates'), 
                 ne(variables['Test.FallbackEnvironment.Url'], '')
+              ),
+              and(
+                succeeded('AnalyseUpdates'),
+                succeeded('BuildPackage'),
+                not(failed('SolutionChecker')),
+                ne(dependencies.AnalyseUpdates.outputs['FindExistingEnvironment.FindWorkItemHyperlink.Relation.url'], ''),
+                eq(dependencies.DeployPackage.result, 'Skipped')
               )
             ) 
           )
@@ -394,11 +402,20 @@ stages:
               and(
                 succeeded('AnalyseUpdates'), 
                 ne(variables['Test.FallbackEnvironment.Url'], '')
+              ),
+              and(
+                succeeded('AnalyseUpdates'),
+                succeeded('BuildPackage'),
+                not(failed('SolutionChecker')),
+                ne(dependencies.AnalyseUpdates.outputs['FindExistingEnvironment.FindWorkItemHyperlink.Relation.url'], ''),
+                eq(dependencies.DeployPackage.result, 'Skipped')
               )
             ) 
           )
       dependsOn:
         - AnalyseUpdates
+        - BuildPackage
+        - SolutionChecker
         - CreateEnvironment
         - DeployPackage
         - ${{ if gt(length(parameters.finaliseEnvironmentJobs), 0) }}:
