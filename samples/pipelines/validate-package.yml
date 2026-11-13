@@ -37,7 +37,7 @@ extends:
           - src/config/*
         stepName: GetConfigUpdated
         stepDisplayName: Get config updated
-        triggerEnvironmentCreation: true
+        triggerenvironmentCreate: true
         triggerEnvironmentUpdate: true
     displayNamePrefix: CONTOSO-SALES-DEV
     domainNamePrefix: contoso-sales-dev

@@ -95,7 +95,7 @@ jobs:
           ENVCREATE_NONE: 'False'
           ENVUPDATE_NONE: 'False'
           ${{ each pattern in parameters.additionalPatterns }}:
-            ${{ if eq(pattern.triggerEnvironmentCreation, true) }}:
+            ${{ if eq(pattern.triggerenvironmentCreate, true) }}:
               ENVCREATE_${{ upper(pattern.stepName) }}: $(${{ pattern.stepName }}.IsUpdated)
             ${{ if eq(pattern.triggerEnvironmentUpdate, true) }}:
               ENVUPDATE_${{ upper(pattern.stepName) }}: $(${{ pattern.stepName }}.IsUpdated)
