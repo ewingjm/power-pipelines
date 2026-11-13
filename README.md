@@ -204,7 +204,7 @@ Builds a Package Deployer package (i.e. a package project that has been created 
 
 The managed package is published as an artifact named `package`.
 
-This template uses GitVersion to version the build. Please ensure that you have a properly configured GitVersion.yml file in the root of your repository. Below is an example GitVersion.yml that uses GitVersion's [mainline](https://gitversion.net/docs/reference/modes/mainline) mode [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). This approach assumes you keep your main branch deployable to production at all times (recommended).
+This template uses GitVersion 5.x to version the build. Please ensure that you have a properly configured GitVersion.yml file in the root of your repository. Below is an example GitVersion.yml that uses GitVersion's [mainline](https://gitversion.net/docs/reference/modes/mainline) mode [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). This approach assumes you keep your main branch deployable to production at all times (recommended).
 
 ```yaml
 mode: mainline
