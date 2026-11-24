@@ -165,11 +165,11 @@ steps:
 
       $requests = $workItems | ForEach-Object {
           $workItemId = $_
-          $patchDocument = [System.Collections.ArrayList]@()
+          $workItemUri = "$endpointUrl/$($workItemId)?api-version=7.0"
 
           # Azure DevOps rejects a second hyperlink with the same URL ("Relation already exists"),
-          # so remove any existing hyperlink(s) to this URL in the same patch to replace them.
-          # Remove in descending index order so earlier indexes remain valid.
+          # even when a remove for the old one is in the same patch, so the existing hyperlink(s)
+          # to this URL are removed in a separate request before the new one is added.
           $workItem = az boards work-item show --id $workItemId --expand relations | ConvertFrom-Json
           $existingIndexes = @()
           if ($workItem.relations) {
@@ -181,14 +181,26 @@ steps:
               }
           }
 
-          foreach ($index in ($existingIndexes | Sort-Object -Descending)) {
-              Write-Host "Replacing existing work item hyperlink at relation index $index for work item $workItemId."
-              $patchDocument.Add(@{
-                  op   = "remove"
-                  path = "/relations/$index"
-              }) | Out-Null
+          if ($existingIndexes.Count -gt 0) {
+              # Remove in descending index order so earlier indexes remain valid.
+              $removeDocument = [System.Collections.ArrayList]@()
+              foreach ($index in ($existingIndexes | Sort-Object -Descending)) {
+                  Write-Host "Removing existing work item hyperlink at relation index $index for work item $workItemId."
+                  $removeDocument.Add(@{
+                      op   = "remove"
+                      path = "/relations/$index"
+                  }) | Out-Null
+              }
+
+              $removeRequest = ConvertTo-Json -Depth 4 -InputObject $removeDocument -Compress
+              $removeResponse = Invoke-WebRequest -Method Patch -Headers $requestHeaders -Uri $workItemUri -Body $removeRequest -UseBasicParsing
+              if ($removeResponse.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
+                  Write-Error $removeResponse.StatusDescription
+                  return
+              }
           }
 
+          $patchDocument = [System.Collections.ArrayList]@()
           $patchDocument.Add(@{
               op    = "add"
               path  = "/relations/-"
@@ -211,7 +223,7 @@ steps:
           }
 
           $request = ConvertTo-Json -Depth 4 -InputObject $patchDocument -Compress
-          $response = Invoke-WebRequest -Method Patch -Headers $requestHeaders -Uri "$endpointUrl/$($workItemId)?api-version=7.0" -Body $request -UseBasicParsing
+          $response = Invoke-WebRequest -Method Patch -Headers $requestHeaders -Uri $workItemUri -Body $request -UseBasicParsing
 
           if ($response.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
               Write-Error $response.StatusDescription
