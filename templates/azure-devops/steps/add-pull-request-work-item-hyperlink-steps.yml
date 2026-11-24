@@ -161,21 +161,46 @@ steps:
           "Content-Type"  = "application/json-patch+json"
       }
 
+      $searchUri = [System.Uri]::new($env:ADDHYPERLINK_URL)
+
       $requests = $workItems | ForEach-Object {
-          $patchDocument = [System.Collections.ArrayList]@(
-              @{
-                  op    = "add"
-                  path  = "/relations/-"
-                  value = @{
-                      url = $env:ADDHYPERLINK_URL
-                      rel = "Hyperlink"
-                      attributes = @{
-                          comment = $env:ADDHYPERLINK_COMMENT
-                          isLocked = $true
-                      }
+          $workItemId = $_
+          $patchDocument = [System.Collections.ArrayList]@()
+
+          # Azure DevOps rejects a second hyperlink with the same URL ("Relation already exists"),
+          # so remove any existing hyperlink(s) to this URL in the same patch to replace them.
+          # Remove in descending index order so earlier indexes remain valid.
+          $workItem = az boards work-item show --id $workItemId --expand relations | ConvertFrom-Json
+          $existingIndexes = @()
+          if ($workItem.relations) {
+              for ($i = 0; $i -lt $workItem.relations.Count; $i++) {
+                  $relation = $workItem.relations[$i]
+                  if ($relation.rel -eq "Hyperlink" -and [System.Uri]::new($relation.url) -eq $searchUri) {
+                      $existingIndexes += $i
                   }
               }
-          )
+          }
+
+          foreach ($index in ($existingIndexes | Sort-Object -Descending)) {
+              Write-Host "Replacing existing work item hyperlink at relation index $index for work item $workItemId."
+              $patchDocument.Add(@{
+                  op   = "remove"
+                  path = "/relations/$index"
+              }) | Out-Null
+          }
+
+          $patchDocument.Add(@{
+              op    = "add"
+              path  = "/relations/-"
+              value = @{
+                  url = $env:ADDHYPERLINK_URL
+                  rel = "Hyperlink"
+                  attributes = @{
+                      comment = $env:ADDHYPERLINK_COMMENT
+                      isLocked = $true
+                  }
+              }
+          }) | Out-Null
 
           if ($env:ADDHYPERLINK_HISTORYCOMMENT) {
               $patchDocument.Add(@{
@@ -186,7 +211,7 @@ steps:
           }
 
           $request = ConvertTo-Json -Depth 4 -InputObject $patchDocument -Compress
-          $response = Invoke-WebRequest -Method Patch -Headers $requestHeaders -Uri "$endpointUrl/$($_)?api-version=7.0" -Body $request -UseBasicParsing
+          $response = Invoke-WebRequest -Method Patch -Headers $requestHeaders -Uri "$endpointUrl/$($workItemId)?api-version=7.0" -Body $request -UseBasicParsing
 
           if ($response.StatusCode -ne [System.Net.HttpStatusCode]::OK) {
               Write-Error $response.StatusDescription
